@@ -188,12 +188,12 @@ left, right = st.columns([3, 1])
 with left:
     st.markdown('<div class="rl-brand">Remunilytics · Prepared for</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="rl-title">{COMPANY}</div>', unsafe_allow_html=True)
-    who = cfg.get("recipient_name") or ""
-    role = cfg.get("recipient_role") or ""
-    intro = " · ".join([x for x in [who, role] if x])
+    # Deliberately company-level, not per-recipient: a single link is shared
+    # with multiple officers at the same company, so naming one of them here
+    # would be wrong (or stale) for everyone else who opens the same link.
     st.markdown(
-        f'<div class="rl-sub">{intro}{" — " if intro else ""}'
-        f'Executive remuneration structure, benchmarked against {len(PEERS)} anonymised peers.</div>',
+        f'<div class="rl-sub">Executive remuneration structure, benchmarked '
+        f'against {len(PEERS)} anonymised peers.</div>',
         unsafe_allow_html=True,
     )
 with right:

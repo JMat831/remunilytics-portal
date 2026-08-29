@@ -47,7 +47,7 @@ RAG_CONFIG = {
         
         "executive_pay": "salary benefits pension bonus LTIP total remuneration Executive Directors single figure CEO CFO total compensation fixed variable pay allowances",
 
-        "policy": "remuneration policy implementation base salary Executive Director CEO CFO annual bonus incentive opportunity maximum percentage LTIP award deferral deferred shares shareholding guideline requirement post-employment holding period pension contribution benefits policy table salary review increase effective date workforce alignment market data new policy current policy remuneration committee new appointment appointed recruit recruitment package incoming"
+        "policy": "remuneration policy implementation base salary Executive Director CEO CFO annual bonus incentive opportunity maximum percentage LTIP award deferral deferred shares shareholding guideline requirement post-employment holding period pension contribution benefits policy table salary review increase effective date workforce alignment market data new policy current policy remuneration committee new appointment appointed recruit recruitment package incoming performance shares awarded incentive plan awards will be set at summary of policy performance share award grant level opportunity level for the year"
     }
 }
 
@@ -244,7 +244,35 @@ The relevant fiscal years may have the format FYxx (the last two digits of the y
 FY20xx (all four digits of the year after 'FY') or FYx/xx (month of the year end, forward slash 
 and the last two digits of the year) or FYx/20xx (month of the year end, forward slash and all four digits of the year).
 
-IMPORTANT: Please provide complete information for ALL CEO bonus metrics. For each metric, extract:
+ONLY LIST GENUINE, DISTINCT PERFORMANCE METRICS — NOT ROLLUPS, TOTALS OR POLICY NARRATIVE:
+A "metric" is a single performance measure with its own weight that the Committee assesses
+individually (e.g. Operating Profit, Revenue, Cash Conversion, Personal Strategic Objectives).
+Do NOT create a separate metric entry for any of the following, even if the report presents them
+in the same table or list as the real metrics:
+  - A SUBTOTAL or rollup that re-sums metrics you have already listed individually (e.g.
+    "Financial Metrics Subtotal", "Financial measures subtotal" summing Operating Profit +
+    Revenue + Cash Conversion into one restated weight, or "Financial measures and IBOs combined
+    outcome" restating the sum of metrics already listed above it). If you can already account
+    for a row's weight and achievement by adding up other rows you have listed, it is a subtotal
+    — omit it, even when the annual report presents it as its own explicit table row or line
+    with its own achievement percentage. Being disclosed in the source does not make it a
+    distinct metric; the test is whether its weight duplicates rows you have already captured.
+  - An OVERALL/TOTAL PLAN OUTCOME restating the whole bonus payout as if it were itself a metric
+    (e.g. "Overall AIP Outcome", "Overall payout construct", "Overall structure", "Total CEO
+    Bonus Payout" as a metric row). This belongs in the separate Total CEO Bonus Payout line at
+    the end of the year's section, NOT as a metric with its own weight.
+  - POLICY-DERIVED narrative about what the plan structure or payout range CAN be in general
+    (e.g. "General Plan Parameters", "target performance results in a bonus of X% of salary,
+    increasing to Y% at maximum" as its own line) rather than this specific year's metric and
+    its own target/actual. This describes the Policy, not a Metric — it does not belong here even
+    when a report repeats it for context alongside the metrics table.
+A genuine metric's own weight, combined with every other genuine metric's weight for the same
+year, should sum to approximately 100% (or to the financial/personal sub-allocation if the report
+explicitly splits the total into named sub-pools) — if you find yourself about to add a row whose
+weight would push the year's total meaningfully past 100%, it is very likely one of the three
+excluded categories above, not a fourth real metric. Re-check before including it.
+
+IMPORTANT: Please provide complete information for ALL CEO bonus metrics (as defined above). For each metric, extract:
 - Description
 - Weight
 - Performance thresholds (Threshold, Target, Stretch, Maximum if applicable)
@@ -513,12 +541,21 @@ Return only valid JSON that matches the schema exactly, preserving all the detai
 STIP_CONVERSION_PROMPT = """
 Convert the following detailed STIP (Short-Term Incentive Plan) analysis to JSON format according to the provided schema.
 
-IMPORTANT: 
+IMPORTANT:
 - Preserve ALL the detailed information from the text analysis
 - Maintain separation between completed year results and upcoming year targets
 - Include all metrics, weights, targets, actual performance, and payout percentages exactly as described
 - For qualitative metrics, preserve the summary assessments provided
 - Do not lose any numerical values or specific details
+
+CATEGORY WEIGHT vs INDIVIDUAL METRIC WEIGHT — DO NOT DUPLICATE A SHARED TOTAL:
+When the text analysis says a metric is "part of" a named category weighted X% and explicitly
+states the individual split is NOT disclosed (phrasing like "specific individual weight not
+disclosed", "individual weight vs [other metric] not disclosed"), leave that metric's
+weight_percentage NULL — do NOT copy the category's X% onto it. Copying the shared category total
+onto every metric within it overstates the plan's total weight (e.g. two metrics each wrongly
+given the full 65% category weight sums to 130% instead of 65%). Only use a number for
+weight_percentage when the text analysis states that specific metric's own individual weight.
 
 SOURCE ATTRIBUTION:
 - Each item in the text analysis is tagged with a "Source Chunk: n". Copy that integer into

@@ -194,6 +194,25 @@ surrounding commentary, not only in the table itself. If — and only if — no 
 anywhere, write "Grant Date: not stated". NEVER infer a date from the previous year's grant
 timing or from the fiscal year label; an absent date is more useful to us than a guessed one.
 
+GRANT TIMING NOTE: When Grant Date is "not stated" but the report gives an EVENT-RELATIVE timing
+instead of a calendar date (e.g. "to be granted following the conclusion of the Company's 2026
+AGM", "shortly after the announcement of full-year results", "in the normal course during Q1"),
+capture that phrasing on its own "Grant Timing Note:" line, concisely in the report's own words.
+This is genuinely useful even without a firm date, and reads far better than a vague fallback —
+do not omit it just because it lacks a specific date. Leave it out entirely when Grant Date IS
+stated, or when the report gives no timing information of any kind (not even an event-relative one).
+STRICT: this line must be a clean, direct statement of what the report says WILL happen for THIS
+award — never your own commentary about what is or isn't specified, never a hedge like "not
+further specified" or "no event-relative phrase given" (if that's the situation, simply omit the
+line entirely), and never a PRIOR YEAR's actual grant date offered as a substitute for this one —
+a previous grant date is not this year's timing and must not appear in this field under any
+phrasing. Likewise, never derive a timing from "the same pattern as prior years", "previously
+granted in [month]", or from unrelated dates elsewhere in the text (e.g. a performance-period
+start date) with words like "implying" or "suggesting" — those are inferences, not statements,
+and inferred timing is exactly what this field must never contain. Only ever use a phrase the
+report gives specifically for THIS grant. If you find yourself explaining an absence of
+information, or reasoning your way to a date rather than quoting one, delete the line instead.
+
 - NEVER copy or carry forward the targets from an earlier grant year into a later grant. If a
   later grant's targets are not explicitly stated in the text, they are pending — do not invent
   or infer them from a prior year's plan.
@@ -216,6 +235,9 @@ Provide the answer in the following format:
     awarded is stated; "announced" if the conditions are disclosed for an award not yet made
   - **Grant Date:** [date exactly as stated in the report, e.g. "3 September 2024" or
     "September 2025"; or "not stated" if the report gives no date — never infer one]
+  - **Grant Timing Note:** [only if Grant Date is "not stated" AND the report gives an
+    event-relative timing instead, e.g. "following the conclusion of the 2026 AGM" — omit
+    this line entirely otherwise]
   - **Performance Period (no. of years):** [If specified (usually 3 years for most LTIPs)]
   - **Metrics:**
     - Metric 1: [Description, Weight, Threshold, Target, Stretch and Exceptional target (if applicable), Additional Condition (e.g. underpin/modifier) if applicable, Measurement Method, Source Chunk: n]
@@ -525,6 +547,12 @@ GRANT DATE:
 - If the line says "not stated", or the analysis notes the date was assumed/expected/inferred
   from a prior year, leave "grant_date" null and set "grant_date_is_stated": false.
   Do NOT manufacture a date.
+- If a "Grant Timing Note:" line is present, copy it verbatim into "grant_timing_note". Only
+  ever populate this alongside a null "grant_date" — never both. If the line itself reads as
+  the model explaining an absence of information (phrases like "not specified", "no event-
+  relative phrase given", "not further specified") rather than a positive statement of timing,
+  leave "grant_timing_note" null instead of copying it — that content does not belong in either
+  field.
 
 SOURCE ATTRIBUTION:
 - Each metric in the text analysis is tagged with a "Source Chunk: n". Copy that integer into

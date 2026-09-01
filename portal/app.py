@@ -154,6 +154,7 @@ def canonical_label(m):
         "ebit": "EBIT", "ebitda": "EBITDA", "pbt": "PBT", "pat": "PAT",
         "rote": "RoTE", "cet1_ratio": "CET1", "nav_per_share": "NAV/share",
         "net_interest_income": "Net Interest Income", "other": "Other",
+        "restricted_time_based": "Restricted (time-based)",
     }.get(str(m), str(m).replace("_", " ").title())
 
 
@@ -344,6 +345,9 @@ with T["Long-Term Incentive"]:
         _dates = (ltip_own["grant_date"].dropna().unique().tolist()
                   if "grant_date" in ltip_own.columns else [])
         _grant_date = _dates[0] if len(_dates) == 1 else None
+        _timing_notes = (ltip_own["grant_timing_note"].dropna().unique().tolist()
+                         if "grant_timing_note" in ltip_own.columns else [])
+        _timing_note = _timing_notes[0] if len(_timing_notes) == 1 else None
 
         if _is_announced and _grant_date:
             _badge = f"Granted {_grant_date}"
@@ -357,6 +361,10 @@ with T["Long-Term Incentive"]:
         if _is_announced and _grant_date:
             st.caption(f"Performance conditions as published in the annual report, for awards "
                        f"the company stated would be made in {_grant_date}.")
+        elif _is_announced and _timing_note:
+            st.caption(f"Performance conditions as published in the annual report. The company "
+                       f"stated this award would be made {_timing_note} — no exact date has "
+                       f"been disclosed.")
         elif _is_announced:
             st.caption("Performance conditions as published in the annual report, for an award "
                        "that had not yet been made at the reporting date. The award itself may "
@@ -410,14 +418,31 @@ with T["Long-Term Incentive"]:
             mix = (mix_src.dropna(subset=["canonical_metric"])
                    .groupby(["company_name", "canonical_metric"])["weight_percentage"]
                    .sum().reset_index())
+            # A company whose LTIP is genuinely 100% restricted/time-based (all
+            # captured metrics carry an explicit zero weight — e.g. binary
+            # pass/fail underpins with no % split, common for RSAs) would
+            # otherwise show as a blank bar indistinguishable from "no LTIP
+            # data on file at all". Give it one distinct labeled segment
+            # instead so "different plan design" doesn't read as "missing data".
+            totals = mix.groupby("company_name")["weight_percentage"].sum()
+            zero_weight_companies = totals[totals == 0].index
+            if len(zero_weight_companies):
+                mix = mix[~mix["company_name"].isin(zero_weight_companies)]
+                mix = pd.concat([mix, pd.DataFrame({
+                    "company_name": zero_weight_companies,
+                    "canonical_metric": "restricted_time_based",
+                    "weight_percentage": 100.0,
+                })], ignore_index=True)
             mix = anonymise(mix, alias, COMPANY, own_label=COMPANY)
-            # "other" always drawn last (top of stack) regardless of its weight,
-            # so it doesn't reshuffle the recognised-metric ordering.
-            metrics_order = (mix[mix["canonical_metric"] != "other"]
+            # "other"/"restricted_time_based" always drawn last (top of stack)
+            # regardless of weight, so they don't reshuffle the recognised
+            # metric ordering.
+            metrics_order = (mix[~mix["canonical_metric"].isin(["other", "restricted_time_based"])]
                              .groupby("canonical_metric")["weight_percentage"]
                              .sum().sort_values(ascending=False).index.tolist())
-            if "other" in mix["canonical_metric"].values:
-                metrics_order.append("other")
+            for tail in ("other", "restricted_time_based"):
+                if tail in mix["canonical_metric"].values:
+                    metrics_order.append(tail)
             fig = go.Figure()
             for m in metrics_order:
                 sub = mix[mix["canonical_metric"] == m]
@@ -425,7 +450,9 @@ with T["Long-Term Incentive"]:
                     x=sub["display_name"], y=sub["weight_percentage"],
                     name=canonical_label(m),
                     marker_line_width=0,
-                    marker_color="#C7CDD6" if m == "other" else None,
+                    marker_color=("#C7CDD6" if m == "other"
+                                 else "#8A94A6" if m == "restricted_time_based"
+                                 else None),
                 )
             order = [COMPANY] + [alias[p] for p in sorted(PEERS) if p in alias]
             fig.update_layout(

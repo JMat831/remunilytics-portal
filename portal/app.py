@@ -362,9 +362,15 @@ with T["Long-Term Incentive"]:
             st.caption(f"Performance conditions as published in the annual report, for awards "
                        f"the company stated would be made in {_grant_date}.")
         elif _is_announced and _timing_note:
-            st.caption(f"Performance conditions as published in the annual report. The company "
-                       f"stated this award would be made {_timing_note} — no exact date has "
-                       f"been disclosed.")
+            # Extracted notes vary between a short fragment ("following the
+            # 2026 AGM") and a full sentence ("Awards will be granted
+            # following...") depending on how the report itself phrases it —
+            # render as its own standalone sentence rather than assuming it
+            # grammatically completes a template, which broke for full clauses.
+            _note = _timing_note.strip().rstrip(".")
+            _note = (_note[:1].upper() + _note[1:]) if _note else _note
+            st.caption(f"Performance conditions as published in the annual report. {_note}. "
+                       f"No exact grant date has been disclosed.")
         elif _is_announced:
             st.caption("Performance conditions as published in the annual report, for an award "
                        "that had not yet been made at the reporting date. The award itself may "

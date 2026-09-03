@@ -313,7 +313,7 @@ with T["Overview"]:
     if not pd.isna(peer_med_n) and own_n > peer_med_n + 1:
         insights.append(("Your LTIP carries more measures than most peers",
                          f"{own_n} metrics vs a peer median of {peer_med_n:.0f}. "
-                         "More measures can dilute the line-of-sight to any one of them.", True))
+                         "A longer scorecard spreads focus across more targets.", True))
 
     if insights:
         for title, body, flag in insights[:5]:

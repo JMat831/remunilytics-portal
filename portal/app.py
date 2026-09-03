@@ -465,7 +465,14 @@ with T["Long-Term Incentive"]:
             order = [COMPANY] + [alias[p] for p in sorted(PEERS) if p in alias]
             fig.update_layout(
                 barmode="stack", height=480,
-                xaxis={"categoryorder": "array", "categoryarray": order},
+                # A peer with zero data (e.g. no LTIP scheme) still needs its
+                # own labeled x-axis slot -- but Plotly's categorical autorange
+                # only spans categories that have actual trace data, so an
+                # empty category trailing at the END of the array (unlike one
+                # sandwiched between two with data) gets silently cut off
+                # without an explicit range forcing the full domain to show.
+                xaxis={"categoryorder": "array", "categoryarray": order,
+                      "range": [-0.5, len(order) - 0.5]},
                 yaxis_title="Weighting (%)",
                 # Bottom margin has to fit BOTH the angled x-axis labels and the
                 # legend below them — too small and Plotly clips the tick text.

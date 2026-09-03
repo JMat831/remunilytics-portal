@@ -283,7 +283,7 @@ with T["Overview"]:
              f"{exact} cited to exact disclosure" if exact else "all linked to source page")
 
     st.write("")
-    st.markdown("#### What stands out")
+    st.markdown("#### What stands out in your LTIP")
 
     insights = []
     if own_mix:
@@ -296,18 +296,21 @@ with T["Overview"]:
                 share = cnt / n_peers
                 if share >= 0.5 and metric not in own_mix:
                     insights.append(
-                        (f"You don't use {canonical_label(metric)}",
-                         f"{cnt} of {n_peers} peers ({share:.0%}) include it in their LTIP.", True))
+                        (f"{canonical_label(metric)} is common among peers",
+                         f"{cnt} of {n_peers} peers ({share:.0%}) include it in their LTIP "
+                         f"— worth knowing for benchmarking conversations.", True))
             for metric in own_mix:
                 cnt = int(usage.get(metric, 0))
                 if cnt / n_peers <= 0.25:
-                    # "Only 0 of 4" reads as a typo — drop the "Only" when none
-                    # of the peers use it, since zero is the emphatic case anyway.
-                    phrase = (f"None of the {n_peers} peers use it" if cnt == 0
-                              else f"Only {cnt} of {n_peers} peers use it")
+                    # Lead with why this is useful to know, not the raw gap —
+                    # this page is meant to open a conversation, not read as
+                    # the tool flagging something as wrong.
+                    phrase = ("most peers don't weight it in their LTIP" if cnt == 0
+                              else f"only {cnt} of {n_peers} peers also weight it")
                     insights.append(
-                        (f"{canonical_label(metric)} is unusual here",
-                         f"{phrase} — a deliberate design choice worth articulating.", False))
+                        (f"{canonical_label(metric)} is distinctive to your LTIP",
+                         f"Useful context to have ready if it's raised by your Remuneration "
+                         f"Committee or shareholders — {phrase}.", False))
     if not pd.isna(peer_med_n) and own_n > peer_med_n + 1:
         insights.append(("Your LTIP carries more measures than most peers",
                          f"{own_n} metrics vs a peer median of {peer_med_n:.0f}. "

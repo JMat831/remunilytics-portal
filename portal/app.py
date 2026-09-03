@@ -94,12 +94,12 @@ def source_view(row, extraction_type: str, key_suffix: str = ""):
     if not (pd.notna(fname) and has_box(str(fname), cid, extraction_type)):
         return
     key = f"fullpage_{extraction_type}_{cid}_{row.name}{key_suffix}"
-    with st.expander("See this in the annual report"):
+    with st.expander("See this in the Annual Report"):
         crop_path, pg = render_citation(str(fname), cid, extraction_type,
                                         crop=True, zoom=2.2)
         if crop_path:
             st.image(crop_path,
-                     caption=f"Extracted from page {pg} of the annual report",
+                     caption=f"Extracted from page {pg} of the Annual Report",
                      width="stretch")
         # Flat checkbox rather than a nested expander (Streamlit disallows
         # expanders inside expanders).
@@ -273,7 +273,7 @@ with T["Overview"]:
             card("CEO LTIP opportunity", "n/a", "not disclosed in latest policy")
     with c3:
         yrs = pd.to_numeric(ltip_primary.get("performance_period_years"), errors="coerce").dropna()
-        card("Performance period", f"{yrs.mode().iloc[0]:.0f} yrs" if len(yrs) else "n/a",
+        card("Performance period (LTIP)", f"{yrs.mode().iloc[0]:.0f} yrs" if len(yrs) else "n/a",
              f"Grant year {own_year}" if own_year else "")
     with c4:
         prov = provenance_summary([ltip_own, stip_all[stip_all.company_name == COMPANY],
@@ -302,15 +302,14 @@ with T["Overview"]:
             for metric in own_mix:
                 cnt = int(usage.get(metric, 0))
                 if cnt / n_peers <= 0.25:
-                    # Lead with why this is useful to know, not the raw gap —
-                    # this page is meant to open a conversation, not read as
-                    # the tool flagging something as wrong.
-                    phrase = ("most peers don't weight it in their LTIP" if cnt == 0
+                    # Lead with the point of difference itself, not a hedge
+                    # about why it might matter — this page is meant to open
+                    # a conversation, not read as the tool flagging a problem.
+                    phrase = ("most don't weight it in their LTIP" if cnt == 0
                               else f"only {cnt} of {n_peers} peers also weight it")
                     insights.append(
                         (f"{canonical_label(metric)} is distinctive to your LTIP",
-                         f"Useful context to have ready if it's raised by your Remuneration "
-                         f"Committee or shareholders — {phrase}.", False))
+                         f"A point of difference from peer practice — {phrase}.", False))
     if not pd.isna(peer_med_n) and own_n > peer_med_n + 1:
         insights.append(("Your LTIP carries more measures than most peers",
                          f"{own_n} metrics vs a peer median of {peer_med_n:.0f}. "
@@ -326,7 +325,7 @@ with T["Overview"]:
         st.info("Your LTIP metric mix sits close to the peer group on every measure we track.")
 
     st.caption("Peers are anonymised. Every figure in this portal links to the page of the "
-               "annual report it was taken from — see the Sources tab.")
+               "Annual Report it was taken from — see the Sources tab.")
 
 # ══════════════════════════════════════════════════════════════════════════════
 # LTIP
@@ -362,7 +361,7 @@ with T["Long-Term Incentive"]:
                     + (f" &nbsp;<span class='rl-pill rl-t1'>{_badge}</span>" if _badge else ""),
                     unsafe_allow_html=True)
         if _is_announced and _grant_date:
-            st.caption(f"Performance conditions as published in the annual report, for awards "
+            st.caption(f"Performance conditions as published in the Annual Report, for awards "
                        f"the company stated would be made in {_grant_date}.")
         elif _is_announced and _timing_note:
             # Extracted notes vary between a short fragment ("following the
@@ -372,10 +371,10 @@ with T["Long-Term Incentive"]:
             # grammatically completes a template, which broke for full clauses.
             _note = _timing_note.strip().rstrip(".")
             _note = (_note[:1].upper() + _note[1:]) if _note else _note
-            st.caption(f"Performance conditions as published in the annual report. {_note}. "
+            st.caption(f"Performance conditions as published in the Annual Report. {_note}. "
                        f"No exact grant date has been disclosed.")
         elif _is_announced:
-            st.caption("Performance conditions as published in the annual report, for an award "
+            st.caption("Performance conditions as published in the Annual Report, for an award "
                        "that had not yet been made at the reporting date. The award itself may "
                        "have been granted subsequently.")
         show = ltip_own.copy()
@@ -612,7 +611,7 @@ if SHOW_PAY_BENCH:
 with T["Sources"]:
     st.markdown("#### Where every number comes from")
     st.write(
-        "Every figure in this portal is extracted from a published annual report and "
+        "Every figure in this portal is extracted from a published Annual Report and "
         "carries a link back to the page it came from. Nothing here is modelled, "
         "estimated or survey-derived."
     )
@@ -655,6 +654,6 @@ with T["Sources"]:
         )
 
 st.markdown(
-    '<div class="rl-foot">Remunilytics · Data extracted from published annual reports. '
+    '<div class="rl-foot">Remunilytics · Data extracted from published Annual Reports. '
     'Peer identities are anonymised in this view. Prepared as an introduction to our approach — '
     'not remuneration advice.</div>', unsafe_allow_html=True)

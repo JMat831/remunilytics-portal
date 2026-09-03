@@ -480,7 +480,16 @@ with T["Long-Term Incentive"]:
             )
             fig.update_xaxes(tickangle=-30)
             st.plotly_chart(fig, width='stretch')
-            st.caption(f"Most recent disclosed grant per company. Peer set: {PEER_BASIS}.")
+            _caption = f"Most recent disclosed grant per company. Peer set: {PEER_BASIS}."
+            # A peer with literally no bar (not even the grey "Restricted"
+            # segment) has no LTIP data on file at all — call that out
+            # explicitly so it doesn't read as missing data or a chart bug.
+            _blank_peers = [alias[p] for p in PEERS
+                           if p in alias and alias[p] not in mix["display_name"].values]
+            if _blank_peers:
+                _caption += (f" {', '.join(sorted(_blank_peers))}: no LTIP scheme identified "
+                            f"in their Annual Report — not missing data.")
+            st.caption(_caption)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # ANNUAL BONUS

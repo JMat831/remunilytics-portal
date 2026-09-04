@@ -18,7 +18,8 @@ import plotly.graph_objects as go
 from data_layer import (
     load_all, resolve_token, parse_source_link, peer_alias_map, anonymise,
     scope, latest_grant_year, latest_per_company, provenance_summary,
-    dedupe_duplicate_plans, exclude_deferred_bonus_plans, TIER_LABEL,
+    dedupe_duplicate_plans, exclude_deferred_bonus_plans, parse_fiscal_year,
+    prefer_latest_ar_vintage, TIER_LABEL,
 )
 from source_render import has_box, render_citation
 
@@ -214,8 +215,10 @@ pay_all = scope(data, "pay", UNIVERSE)
 pol_all = scope(data, "policy", UNIVERSE)
 
 own_year = latest_grant_year(ltip_all, COMPANY)
+# latest_per_company also breaks ties when the same grant_year is described
+# across multiple AR vintages (see its docstring) — no separate call needed.
 ltip_latest = latest_per_company(ltip_all, "grant_year")
-# Two defensive filters for known upstream extraction gaps that predate their
+# Defensive filters for known upstream extraction gaps that predate their
 # fixes in existing (not-yet-re-extracted) data:
 ltip_latest = exclude_deferred_bonus_plans(ltip_latest)  # DABP is STIP, not LTIP
 # Some ARs describe one grant twice (a policy table AND a granted-awards
@@ -506,8 +509,11 @@ with T["Annual Bonus"]:
     if s_own.empty:
         st.info("No annual bonus data on file for this company.")
     else:
-        s_own["_yr"] = pd.to_numeric(
-            s_own["financial_year"].astype(str).str.extract(r"(20\d{2})")[0], errors="coerce")
+        s_own["_yr"] = parse_fiscal_year(s_own["financial_year"])
+        # Same AR-vintage duplication risk as LTIP (see prefer_latest_ar_vintage
+        # docstring) -- group on the already-parsed numeric year, not the raw
+        # text label, since "FY9" vs "FY10" would sort wrong lexically.
+        s_own = prefer_latest_ar_vintage(s_own, year_col="_yr")
         years = sorted(s_own["_yr"].dropna().unique(), reverse=True)
         yr = st.selectbox("Financial year", years, format_func=lambda y: f"FY{int(y)}")
         d = s_own[s_own["_yr"] == yr]

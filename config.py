@@ -89,6 +89,21 @@ subsidiaries within a UK group) commonly say "Restricted Stock Unit (RSU)" where
 would say "Restricted Share" — treat these as the SAME category of award; do not let the
 terminology difference cause you to miss it.
 
+DO NOT RELY ON THE NAME "DABP"/"Deferred Bonus Plan" ALONE — apply the SUBSTANTIVE test even when
+a company gives its scheme a different, non-obvious name. A plan whose award SIZE is determined by
+an annual (single-year) scorecard of financial/operational metrics — exactly like a short-term
+bonus — and which then simply holds/defers that already-sized award in shares for a further period
+(with only a time-based or underpin gate, no NEW multi-year performance condition attached to the
+deferred portion) is a deferred annual bonus in substance, regardless of its label. Example: AO
+World's "AO Incentive Plan (AOIP)" — despite being named an "Incentive Plan" and including a
+"Deferred Share Option element" that could look LTIP-like — sets its award size purely from that
+year's annual scorecard (the same metrics and targets as its short-term bonus) and defers 66% of
+the ALREADY-EARNED amount into shares for 3 years subject only to continued employment/underpin.
+That is a deferred bonus, not an LTIP, by the same test as DABP — exclude it and its scorecard
+metrics from ltip_plans even though the name alone gives no hint. Ask: does a NEW multi-year
+performance condition apply to the deferred shares themselves, distinct from the annual scorecard
+that sized them? If no, exclude.
+
 ALWAYS CAPTURE RESTRICTED/TIME-BASED AWARDS AS THEIR OWN PLAN ENTRY: A Restricted Share Plan,
 Restricted Share Award (RSA), Restricted Stock Unit (RSU), Restricted Stock Award, or other
 time-based award that vests primarily on continued employment — even if subject to a single

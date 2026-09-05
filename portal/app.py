@@ -18,7 +18,8 @@ import plotly.graph_objects as go
 from data_layer import (
     load_all, resolve_token, parse_source_link, peer_alias_map, anonymise,
     scope, latest_grant_year, latest_per_company, provenance_summary,
-    dedupe_duplicate_plans, exclude_deferred_bonus_plans, parse_fiscal_year,
+    dedupe_duplicate_plans, exclude_deferred_bonus_plans,
+    exclude_buyout_replacement_awards, parse_fiscal_year,
     prefer_latest_ar_vintage, TIER_LABEL,
 )
 from source_render import has_box, render_citation
@@ -221,6 +222,9 @@ ltip_latest = latest_per_company(ltip_all, "grant_year")
 # Defensive filters for known upstream extraction gaps that predate their
 # fixes in existing (not-yet-re-extracted) data:
 ltip_latest = exclude_deferred_bonus_plans(ltip_latest)  # DABP is STIP, not LTIP
+# A recruitment buy-out/replacement award mirrors a PREVIOUS employer's plan
+# terms for one named individual — not this company's own LTIP design.
+ltip_latest = exclude_buyout_replacement_awards(ltip_latest)
 # Some ARs describe one grant twice (a policy table AND a granted-awards
 # table), producing two near-identically-worded plans with the same metrics
 # and weights. Left in, this silently doubles weight-sum totals — dedupe once

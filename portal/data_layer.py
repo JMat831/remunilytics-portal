@@ -262,6 +262,36 @@ def exclude_deferred_bonus_plans(df: pd.DataFrame) -> pd.DataFrame:
     return df[mask]
 
 
+_BUYOUT_AWARD_RE = re.compile(
+    r"buy-?out award|replacement award|replacement of\b", re.IGNORECASE
+)
+
+
+def exclude_buyout_replacement_awards(df: pd.DataFrame) -> pd.DataFrame:
+    """Drop recruitment buy-out/replacement awards -- real, disclosed
+    compensation, but not the company's own LTIP design.
+
+    When a new executive forfeits unvested awards from a PREVIOUS employer to
+    join, the hiring company sometimes grants a mirroring "buy-out" award on
+    similar terms to compensate. Found via Moonpig Group: two 2026-dated
+    plans literally named "Buy-out award (replacement of Autotrader 2024/2025
+    PSP), ... for Catherine Faiers" -- their metrics/weights mirror Auto
+    Trader's plan design, not Moonpig's, and are tied to one named individual,
+    not a repeatable policy choice. Left in, they inflated Moonpig's
+    2026 grant to 200% weight and crowded out the company's own genuine LTIP
+    plan (weight not-yet-disclosed for the new year) as the "latest" one
+    shown -- exactly the same failure shape as AOIP for AO World, just
+    triggered by an unrelated cause (a recruitment mechanic, not a
+    mis-named deferred bonus). A Glass Lewis research report on Moonpig
+    doesn't reference these at all, consistent with them being a one-off
+    individual item rather than part of the standing remuneration policy.
+    """
+    if df.empty or "plan_name" not in df.columns:
+        return df
+    mask = ~df["plan_name"].astype(str).str.contains(_BUYOUT_AWARD_RE, na=False)
+    return df[mask]
+
+
 def dedupe_duplicate_plans(df: pd.DataFrame) -> pd.DataFrame:
     """Drop plans that are the same grant captured twice under different names.
 

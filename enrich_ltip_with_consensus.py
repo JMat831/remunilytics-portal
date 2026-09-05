@@ -204,6 +204,21 @@ METRIC_NAME_RULES = [
     ("rote",                [r"\brote\b", r"return on tangible equity"]),
     ("cet1_ratio",          [r"\bcet1\b", r"capital ratio"]),
 
+    # Value Creation Plan (VCP) — mechanically distinct from absolute TSR:
+    # typically pure share-price/market-cap growth against fixed hurdles,
+    # no dividend component, funded via a value-creation curve rather than a
+    # standard threshold/target/max vesting scale. Must precede tsr_absolute
+    # -- VCP metric text often also contains "share price growth" (an
+    # absolute-TSR trigger phrase below), and lumping the two together would
+    # hide a genuinely distinctive, uncommon plan design as if it were an
+    # ordinary absolute-TSR PSP (found via AO World's VCP22). Requires "share
+    # price" alongside "value creation" specifically -- "value creation" ALONE
+    # is a generic label other companies use for unrelated metrics (Shell's
+    # "Intrinsic Value Creation" is actually FCF-per-share growth, nothing to
+    # do with a share-price-hurdle plan, and must not be swept in here).
+    ("value_creation_plan", [r"share price.*value creation",
+                             r"value creation.*share price"]),
+
     # TSR — explicit absolute first; everything else defaults to relative.
     # Share-price measures are absolute market measures, but the phrases must be
     # SPECIFIC: a bare "share price" would wrongly capture relative-TSR metrics

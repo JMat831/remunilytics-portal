@@ -157,6 +157,7 @@ def canonical_label(m):
         "rote": "RoTE", "cet1_ratio": "CET1", "nav_per_share": "NAV/share",
         "net_interest_income": "Net Interest Income", "other": "Other",
         "restricted_time_based": "Restricted (time-based)",
+        "value_creation_plan": "Value Creation Plan (VCP)",
     }.get(str(m), str(m).replace("_", " ").title())
 
 

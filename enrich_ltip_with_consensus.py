@@ -159,6 +159,17 @@ METRIC_NAME_RULES = [
     ("margin",              [r"\bmargin\b", r"as a percentage of",
                              r"\b%\s*of\b", r"as a % of"]),
 
+    # A hybrid plan's restricted/time-based element (e.g. Diageo's SESOP,
+    # Vistry's CFO-only RSA, BAE's US-executive RSA) is written by the LTIP
+    # extraction prompt using this exact standardised phrase ("Time-based
+    # restricted award (no performance conditions)" / "(subject to
+    # underpin)") specifically so it can be told apart from a genuine
+    # performance-conditioned metric. Must come before the ESG rule below —
+    # the "(subject to underpin)" variant would otherwise be claimed by
+    # ESG's bare `underpin` trigger and vanish into the wrong bucket instead
+    # of getting its own distinct "Restricted (time-based)" treatment.
+    ("restricted_time_based", [r"time-based restricted award"]),
+
     # Joinable to consensus
     ("eps",                 [r"\beps\b", r"earnings per share"]),
     ("ebitda",              [r"\bebitda\b"]),

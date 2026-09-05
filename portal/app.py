@@ -439,8 +439,19 @@ with T["Long-Term Incentive"]:
             # otherwise show as a blank bar indistinguishable from "no LTIP
             # data on file at all". Give it one distinct labeled segment
             # instead so "different plan design" doesn't read as "missing data".
+            # Must require an EXPLICIT disclosed zero, not merely an absent
+            # one: a company whose latest grant simply hasn't had its weights
+            # disclosed yet (all-NaN, e.g. a forward year's LTIP awaiting
+            # publication) sums to 0 exactly the same way a genuine all-zero
+            # underpin-only plan does, but means the opposite thing — found
+            # via Moonpig, whose still-undisclosed FY27 weights wrongly
+            # rendered as a 100% "Restricted (time-based)" bar.
+            has_any_real_weight = mix_src.groupby("company_name")["weight_percentage"] \
+                                          .apply(lambda s: s.notna().any())
             totals = mix.groupby("company_name")["weight_percentage"].sum()
-            zero_weight_companies = totals[totals == 0].index
+            zero_weight_companies = totals[
+                (totals == 0) & totals.index.map(has_any_real_weight).fillna(False)
+            ].index
             if len(zero_weight_companies):
                 mix = mix[~mix["company_name"].isin(zero_weight_companies)]
                 mix = pd.concat([mix, pd.DataFrame({

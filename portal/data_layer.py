@@ -292,6 +292,36 @@ def exclude_buyout_replacement_awards(df: pd.DataFrame) -> pd.DataFrame:
     return df[mask]
 
 
+_CFO_ONLY_RE = re.compile(r"\bCFO only\b", re.IGNORECASE)
+
+
+def exclude_other_executive_only_awards(df: pd.DataFrame) -> pd.DataFrame:
+    """Drop a plan explicitly scoped to the CFO alone -- it isn't part of the
+    CEO's own LTIP design, and every other CEO-anchored figure in this portal
+    (the "CEO LTIP opportunity" card, `apply_ltip_quantum_weighting`'s Policy
+    split) would be silently contradicted by pooling it in anyway.
+
+    Found via Vistry Group: "Restricted Share Award (Hybrid LTIP - CFO
+    only)" was being summed alongside the CEO's own 100%-weighted Performance
+    Share Award as if both applied to the same person, producing a spurious
+    200% bar -- but Vistry's Policy table shows the CEO's own
+    psp_max_percentage/rsp_max_percentage as blank: the CEO has no restricted
+    element at all, only the CFO does. Same root cause as BAE Systems, where
+    a *different* named individual ("President and Chief Executive Officer,
+    BAE Systems, Inc.", heading the US subsidiary, not the Group CEO) holds
+    a Restricted Shares award the actual Group CEO's PSP metrics were
+    wrongly scaled against -- handled separately in
+    `apply_ltip_quantum_weighting` by preferring the shortest matching CEO
+    title, since that case has no clean plan_name phrase to filter on.
+    Deliberately narrow (only the literal "CFO only" phrase) to avoid ever
+    excluding a plan that genuinely is the CEO's own.
+    """
+    if df.empty or "plan_name" not in df.columns:
+        return df
+    mask = ~df["plan_name"].astype(str).str.contains(_CFO_ONLY_RE, na=False)
+    return df[mask]
+
+
 def dedupe_duplicate_plans(df: pd.DataFrame) -> pd.DataFrame:
     """Drop plans that are the same grant captured twice under different names.
 
@@ -391,7 +421,22 @@ def apply_ltip_quantum_weighting(ltip_df: pd.DataFrame, pol_df: pd.DataFrame) ->
     if pol_df.empty or "psp_max_percentage" not in pol_df.columns:
         return ltip_df
 
-    ceo_pol = pol_df[pol_df["position"].astype(str).str.contains("chief exec|CEO", case=False, na=False)]
+    ceo_pol = pol_df[pol_df["position"].astype(str).str.contains("chief exec|CEO", case=False, na=False)].copy()
+    # Some companies disclose Policy figures for more than one "chief
+    # executive"-titled person -- e.g. BAE Systems has both "Chief Executive"
+    # (the actual Group CEO, Charles Woodburn) and "President and Chief
+    # Executive Officer, BAE Systems, Inc." (a different, named individual
+    # heading the US subsidiary, who separately gets his own Restricted
+    # Shares award). A plain "chief exec" match catches both, and picking
+    # the wrong one applies a different person's split to the whole
+    # company's shared PSP metrics. The subsidiary/regional title is
+    # reliably the longer, more qualified one -- keep only the shortest
+    # matching title per company as the best proxy for the group-level role.
+    if not ceo_pol.empty:
+        shortest_len = ceo_pol.groupby("company_name")["position"].transform(
+            lambda s: s.astype(str).str.len().min()
+        )
+        ceo_pol = ceo_pol[ceo_pol["position"].astype(str).str.len() == shortest_len]
     split = ceo_pol[
         ceo_pol["psp_max_percentage"].notna()
         & ceo_pol["rsp_max_percentage"].notna()

@@ -19,8 +19,9 @@ from data_layer import (
     load_all, resolve_token, parse_source_link, peer_alias_map, anonymise,
     scope, latest_grant_year, latest_per_company, provenance_summary,
     dedupe_duplicate_plans, exclude_deferred_bonus_plans,
-    exclude_buyout_replacement_awards, parse_fiscal_year,
-    prefer_latest_ar_vintage, apply_ltip_quantum_weighting, TIER_LABEL,
+    exclude_buyout_replacement_awards, exclude_other_executive_only_awards,
+    parse_fiscal_year, prefer_latest_ar_vintage,
+    apply_ltip_quantum_weighting, TIER_LABEL,
 )
 from source_render import has_box, render_citation
 
@@ -226,6 +227,10 @@ ltip_latest = exclude_deferred_bonus_plans(ltip_latest)  # DABP is STIP, not LTI
 # A recruitment buy-out/replacement award mirrors a PREVIOUS employer's plan
 # terms for one named individual — not this company's own LTIP design.
 ltip_latest = exclude_buyout_replacement_awards(ltip_latest)
+# A plan explicitly scoped to the CFO alone isn't part of the CEO's own
+# LTIP design -- pooling it in silently contradicts every other
+# CEO-anchored figure elsewhere in this portal.
+ltip_latest = exclude_other_executive_only_awards(ltip_latest)
 # Some ARs describe one grant twice (a policy table AND a granted-awards
 # table), producing two near-identically-worded plans with the same metrics
 # and weights. Left in, this silently doubles weight-sum totals — dedupe once

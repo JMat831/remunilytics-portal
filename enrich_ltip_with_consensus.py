@@ -168,7 +168,12 @@ METRIC_NAME_RULES = [
     # the "(subject to underpin)" variant would otherwise be claimed by
     # ESG's bare `underpin` trigger and vanish into the wrong bucket instead
     # of getting its own distinct "Restricted (time-based)" treatment.
-    ("restricted_time_based", [r"time-based restricted award"]),
+    # Diageo's own LTIP extraction predates that standardised phrase and
+    # instead reads "Share price appreciation (SESOP element - performance
+    # conditions removed)" -- SESOP (Senior Executive Share Option Plan) is
+    # specific enough to Diageo that matching it directly carries no
+    # false-positive risk elsewhere.
+    ("restricted_time_based", [r"time-based restricted award", r"\bsesop\b"]),
 
     # Joinable to consensus
     ("eps",                 [r"\beps\b", r"earnings per share"]),

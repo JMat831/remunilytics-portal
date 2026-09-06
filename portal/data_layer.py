@@ -418,11 +418,15 @@ def apply_ltip_quantum_weighting(ltip_df: pd.DataFrame, pol_df: pd.DataFrame) ->
         # Nephew) but sometimes bundled as one metric row inside a single
         # shared plan_name alongside the weighted PSP metrics (Hunting's
         # "2024 HPSP" names both elements in one plan, splitting them out
-        # only at the metric_name level) -- check both.
+        # only at the metric_name level) -- check both. Also covers a
+        # non-restricted "second element" that Policy still discloses as an
+        # additive psp/rsp-style split (Diageo's SESOP share options, whose
+        # performance conditions were removed, making it price/time-driven
+        # like an RSP even though it isn't literally restricted shares).
         is_rsp = (
             (plan_names.str.contains(r"\brsp\b|restricted share", case=False, regex=True)
              & ~plan_names.str.contains("performance", case=False))
-            | metric_names.str.contains(r"\brsp\b|restricted share|time-based restricted award",
+            | metric_names.str.contains(r"\brsp\b|restricted share|time-based restricted award|\bsesop\b",
                                         case=False, regex=True)
         )
         is_psp = ~is_rsp

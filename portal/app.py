@@ -293,6 +293,12 @@ with T["Overview"]:
     st.write("")
     st.markdown("#### What stands out in your LTIP")
 
+    # Canonical categories that describe an entire PLAN VEHICLE (not a
+    # weighted performance metric within a plan) need different phrasing —
+    # "most don't weight it" reads oddly for something that isn't a metric
+    # you weight at all, it's a structural choice of plan type.
+    PLAN_TYPE_METRICS = {"value_creation_plan", "restricted_time_based"}
+
     insights = []
     if own_mix:
         peer_mix = ltip_latest[ltip_latest["company_name"] != COMPANY]
@@ -300,6 +306,24 @@ with T["Overview"]:
             usage = (peer_mix.dropna(subset=["canonical_metric"])
                      .groupby("canonical_metric")["company_name"].nunique())
             n_peers = max(peer_mix["company_name"].nunique(), 1)
+            # What the company HAS that's distinctive comes first — it's the
+            # more notable fact (a positive characteristic of their own LTIP)
+            # than what they lack, which is comparatively less newsworthy.
+            for metric in own_mix:
+                cnt = int(usage.get(metric, 0))
+                if cnt / n_peers <= 0.25:
+                    label = canonical_label(metric)
+                    if metric in PLAN_TYPE_METRICS:
+                        title = f"{label} is unique to your LTIP" if cnt == 0 \
+                            else f"{label} is rare among your peers"
+                        body = ("No peers in this set use this plan type." if cnt == 0
+                               else f"Only {cnt} of {n_peers} peers also use one.")
+                    else:
+                        title = f"{label} is distinctive to your LTIP"
+                        phrase = ("most don't weight it in their LTIP" if cnt == 0
+                                 else f"only {cnt} of {n_peers} peers also weight it")
+                        body = f"A point of difference from peer practice — {phrase}."
+                    insights.append((title, body, False))
             for metric, cnt in usage.sort_values(ascending=False).items():
                 share = cnt / n_peers
                 if share >= 0.5 and metric not in own_mix:
@@ -307,17 +331,6 @@ with T["Overview"]:
                         (f"{canonical_label(metric)} is common among peers",
                          f"{cnt} of {n_peers} peers ({share:.0%}) include it in their LTIP "
                          f"— worth knowing for benchmarking conversations.", True))
-            for metric in own_mix:
-                cnt = int(usage.get(metric, 0))
-                if cnt / n_peers <= 0.25:
-                    # Lead with the point of difference itself, not a hedge
-                    # about why it might matter — this page is meant to open
-                    # a conversation, not read as the tool flagging a problem.
-                    phrase = ("most don't weight it in their LTIP" if cnt == 0
-                              else f"only {cnt} of {n_peers} peers also weight it")
-                    insights.append(
-                        (f"{canonical_label(metric)} is distinctive to your LTIP",
-                         f"A point of difference from peer practice — {phrase}.", False))
     if not pd.isna(peer_med_n) and own_n > peer_med_n + 1:
         insights.append(("Your LTIP carries more measures than most peers",
                          f"{own_n} metrics vs a peer median of {peer_med_n:.0f}. "

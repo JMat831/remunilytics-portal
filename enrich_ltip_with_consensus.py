@@ -190,13 +190,28 @@ METRIC_NAME_RULES = [
     # ESG before revenue — carbon/co₂/intensity patterns are unambiguous and
     # must not be overridden by \brevenue\b appearing elsewhere in the name
     # (e.g. "CO₂ Revenue Intensity Reduction" → esg, not revenue)
+    #
+    # Deliberately NOT matching a bare "underpin": an underpin is just a
+    # pass/fail gate mechanism and can attach to ANY category (financial,
+    # governance, risk, liquidity, individual/discretionary, or ESG) — it
+    # says nothing about what the underlying condition actually measures.
+    # A bare "underpin" trigger here was silently classifying dozens of
+    # unrelated conditions as ESG purely because they happened to be
+    # structured as underpins (found via Pets At Home's "Holistic and
+    # Discretionary Underpin", genuinely a governance/discretion gate with
+    # nothing to do with sustainability, but plenty of others too: "Risk
+    # Underpin", "Liquidity Underpin", "Financial Underpin (CET1 Capital)",
+    # "Individual Performance Underpin", etc.). Every GENUINELY ESG-flavoured
+    # underpin already matches via a more specific word below (esg,
+    # sustainability, governance, safety, carbon...) — the bare trigger was
+    # never needed for a true positive, only causing false ones.
     ("esg",                 [r"\besg\b", r"sustainability", r"carbon",
                              r"emission", r"\bco2\b", r"co₂", r"intensity",
                              r"diversity", r"\bdiverse\b", r"gender", r"female",
                              r"\bwomen\b", r"safety", r"energy transition",
                              r"environmental", r"\bwaste\b",
                              r"\benergy\b.*(?:reduction|saving|efficien)",
-                             r"governance", r"underpin"]),
+                             r"governance"]),
 
     ("revenue",             [r"\brevenue\b", r"\bsales\b", r"\bturnover\b",
                              r"total income"]),

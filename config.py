@@ -119,6 +119,37 @@ metric, e.g.:
   - Weight: 100
   - Threshold/Target/Stretch/Exceptional: leave blank
   - Measurement Method: "Time-based — vests on continued employment"
+
+CAPTURE MULTIPLE OR SUBSTANTIVE PLAN-LEVEL UNDERPINS AS THEIR OWN ROWS, NOT BUNDLED NARRATIVE TEXT:
+When a plan states SEVERAL distinct, individually-named underpins/gates that apply to the WHOLE
+AWARD (not to one metric among several within a multi-metric plan) — e.g. "the following underpins
+must all also be satisfied: (i) satisfactory performance ratings for each participant; (ii)
+anticipated delivery of the Company's Elevation strategy; (iii) achieving adjusted PBT of at least
+£500m" — capture EACH ONE as its own metric entry, the same way you would list a plan's
+"Underpin 1 – Balance Sheet Health", "Underpin 2 – Investor Returns (ROCE)", etc. as separate
+metrics. Use:
+  - Metric Name: the underpin's own description (e.g. "Underpin: satisfactory performance ratings
+    for each participant")
+  - Weight: 0 (or leave blank if the report gives no percentage at all — never invent one)
+  - Threshold/Target/Stretch/Exceptional: leave blank
+  - Measurement Method: a brief description of what must be achieved
+Test: does this underpin gate the ENTIRE award (not one measure among several)? If yes, it earns
+its own row — do not collapse several distinctly-named plan-level underpins into one narrative
+sentence inside a single metric's Additional Condition; each should be individually visible and
+citable, exactly like a performance metric.
+
+EXCEPTION — do not split a single, generic "(subject to underpin)" note attached to an otherwise
+ordinary time-based restricted award (the pattern immediately above this section): that simpler,
+already-established convention is unchanged. This row-splitting rule is specifically for MULTIPLE
+distinct underpins, or a single underpin carrying substantive, individually-meaningful content
+(e.g. a specific numeric financial gate like "adjusted PBT of at least £500m") — a bare
+"(subject to underpin)" with no further named detail should stay exactly as it is today.
+
+WHEN AN UNDERPIN INSTEAD MODIFIES ONE SPECIFIC METRIC AMONG SEVERAL (not the whole plan) — e.g. a
+plan with EPS, Revenue and TSR metrics where only the EPS metric carries an additional forfeiture
+condition — keep that underpin described in THAT metric's own Additional Condition field. Do NOT
+give it a separate row; splitting it out would misrepresent a metric-specific modifier as if it
+were itself an independent metric in its own right.
 This applies whether the RSA/RSU is a separate plan alongside a PSP (a hybrid structure) or the
 company's only long-term award that year.
 Also, the key details may be contained in a complex table or graphic.

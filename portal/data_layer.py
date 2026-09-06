@@ -363,6 +363,99 @@ def prefer_latest_ar_vintage(df: pd.DataFrame, year_col: str = "grant_year") -> 
     return df[df["file_name"] == latest_file]
 
 
+def apply_ltip_quantum_weighting(ltip_df: pd.DataFrame, pol_df: pd.DataFrame) -> pd.DataFrame:
+    """Rescale a hybrid PSP+RSP award's metric weights by their true share of
+    total LTIP opportunity, for the metric-mix chart only.
+
+    A company granting a 300%-of-salary Performance Share Plan AND a separate
+    150%-of-salary Restricted Share Plan in the same year does not have "200%
+    of LTIP" -- it has one blended award that is 2/3 PSP and 1/3 RSP by value.
+    Left unscaled, each plan's own weights (which sum to ~100% within that
+    plan) stack on top of each other, producing bars up to 200% and silently
+    overstating every metric's true share of the award (found via Burberry
+    Group, whose Policy already discloses the 300/150 split -- see
+    psp_max_percentage/rsp_max_percentage below).
+
+    Only applies when Policy discloses BOTH halves of the split for the CEO,
+    the RSP is currently active, and the mechanism is explicitly "additive"
+    (both elements granted in full every year) -- a "substitutive" split
+    (e.g. Antofagasta, where the RSP portion substitutes for PSP rather than
+    adding to it) already produces one coherent ~100% award and must not be
+    rescaled. Only triggers when the plans cleanly separate into exactly one
+    RSP-like and one PSP-like plan_name; anything messier (three plans, or a
+    disclosed split with no RSP-named plan among the grant's rows) is left
+    untouched rather than guessed at.
+    """
+    if ltip_df.empty or "plan_name" not in ltip_df.columns:
+        return ltip_df
+    if pol_df.empty or "psp_max_percentage" not in pol_df.columns:
+        return ltip_df
+
+    ceo_pol = pol_df[pol_df["position"].astype(str).str.contains("chief exec|CEO", case=False, na=False)]
+    split = ceo_pol[
+        ceo_pol["psp_max_percentage"].notna()
+        & ceo_pol["rsp_max_percentage"].notna()
+        & (ceo_pol["rsp_status"].astype(str).str.lower() == "active")
+        & (ceo_pol["ltip_hybrid_mechanism"].astype(str).str.lower() == "additive")
+    ].drop_duplicates(subset="company_name", keep="last").set_index("company_name")
+    if split.empty:
+        return ltip_df
+
+    out_frames = []
+    for company, grp in ltip_df.groupby("company_name", sort=False):
+        if company not in split.index:
+            out_frames.append(grp)
+            continue
+        psp_max = split.loc[company, "psp_max_percentage"]
+        rsp_max = split.loc[company, "rsp_max_percentage"]
+        total = psp_max + rsp_max
+        if not total:
+            out_frames.append(grp)
+            continue
+        plan_names = grp["plan_name"].astype(str)
+        metric_names = grp["metric_name"].astype(str) if "metric_name" in grp.columns else pd.Series("", index=grp.index)
+        # The RSP element is usually its own plan_name (Burberry, WPP, Smith &
+        # Nephew) but sometimes bundled as one metric row inside a single
+        # shared plan_name alongside the weighted PSP metrics (Hunting's
+        # "2024 HPSP" names both elements in one plan, splitting them out
+        # only at the metric_name level) -- check both.
+        is_rsp = (
+            (plan_names.str.contains(r"\brsp\b|restricted share", case=False, regex=True)
+             & ~plan_names.str.contains("performance", case=False))
+            | metric_names.str.contains(r"\brsp\b|restricted share|time-based restricted award",
+                                        case=False, regex=True)
+        )
+        is_psp = ~is_rsp
+        if grp.loc[is_rsp, "plan_name"].nunique() != 1 or grp.loc[is_psp, "plan_name"].nunique() != 1:
+            out_frames.append(grp)
+            continue
+        # Both sides must independently already read as a complete award: the
+        # PSP metrics must sum to ~100% on their own, and the RSP side must
+        # either sum to ~100% (an explicit weighted restricted award, e.g.
+        # Hunting) or to 0 (pure pass/fail underpins with no weight at all,
+        # e.g. Burberry). A plan whose "PSP" component is actually a partial
+        # kicker inside one blended award (e.g. Harworth's Core RSP Award
+        # plus two 16.5%-weighted outperformance kickers, raw PSP sum 33) is
+        # not this additive two-plan pattern at all -- scaling it would
+        # invent a false total instead of reporting the real one.
+        psp_raw = grp.loc[is_psp, "weight_percentage"].sum()
+        rsp_raw = grp.loc[is_rsp, "weight_percentage"].sum()
+        if not (90 <= psp_raw <= 110) or not (rsp_raw == 0 or 90 <= rsp_raw <= 110):
+            out_frames.append(grp)
+            continue
+        psp_share = psp_max / total
+        rsp_share = rsp_max / total
+        psp_rows = grp.loc[is_psp].copy()
+        psp_rows["weight_percentage"] = psp_rows["weight_percentage"] * psp_share
+        rsp_row = grp.loc[is_rsp].iloc[[0]].copy()
+        rsp_row["metric_name"] = "Restricted (time-based) award"
+        if "canonical_metric" in rsp_row.columns:
+            rsp_row["canonical_metric"] = "restricted_time_based"
+        rsp_row["weight_percentage"] = rsp_share * 100.0
+        out_frames.append(pd.concat([psp_rows, rsp_row], ignore_index=True))
+    return pd.concat(out_frames, ignore_index=True) if out_frames else ltip_df
+
+
 def provenance_summary(frames) -> dict:
     """Aggregate source-precision counts across the frames shown to a recipient."""
     counts = {3: 0, 2: 0, 1: 0, 0: 0}

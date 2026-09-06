@@ -20,7 +20,7 @@ from data_layer import (
     scope, latest_grant_year, latest_per_company, provenance_summary,
     dedupe_duplicate_plans, exclude_deferred_bonus_plans,
     exclude_buyout_replacement_awards, parse_fiscal_year,
-    prefer_latest_ar_vintage, TIER_LABEL,
+    prefer_latest_ar_vintage, apply_ltip_quantum_weighting, TIER_LABEL,
 )
 from source_render import has_box, render_citation
 
@@ -439,7 +439,10 @@ with T["Long-Term Incentive"]:
             # doing so silently shrinks a company's bar below 100% and misreads
             # as "this company only weights X% of its LTIP". Bucket them as
             # "Other" instead so the stack always reflects the true total.
-            mix_src = ltip_latest.copy()
+            # Rescale hybrid PSP+RSP awards to their true share of total LTIP
+            # opportunity before aggregating -- otherwise two plans that each
+            # sum to ~100% on their own stack to ~200% (see docstring).
+            mix_src = apply_ltip_quantum_weighting(ltip_latest, pol_latest)
             has_weight = mix_src["weight_percentage"].notna()
             mix_src["canonical_metric"] = mix_src["canonical_metric"].where(
                 mix_src["canonical_metric"].notna() | ~has_weight, "other"

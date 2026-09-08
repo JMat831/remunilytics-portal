@@ -263,13 +263,14 @@ def exclude_deferred_bonus_plans(df: pd.DataFrame) -> pd.DataFrame:
 
 
 _BUYOUT_AWARD_RE = re.compile(
-    r"buy-?out award|replacement award|replacement of\b", re.IGNORECASE
+    r"buy-?out award|replacement award|replacement of\b|catch-up award", re.IGNORECASE
 )
 
 
 def exclude_buyout_replacement_awards(df: pd.DataFrame) -> pd.DataFrame:
-    """Drop recruitment buy-out/replacement awards -- real, disclosed
-    compensation, but not the company's own LTIP design.
+    """Drop one-off awards tied to a named individual's unusual circumstance
+    -- real, disclosed compensation, but not the company's repeatable LTIP
+    design.
 
     When a new executive forfeits unvested awards from a PREVIOUS employer to
     join, the hiring company sometimes grants a mirroring "buy-out" award on
@@ -285,6 +286,17 @@ def exclude_buyout_replacement_awards(df: pd.DataFrame) -> pd.DataFrame:
     mis-named deferred bonus). A Glass Lewis research report on Moonpig
     doesn't reference these at all, consistent with them being a one-off
     individual item rather than part of the standing remuneration policy.
+
+    Also catches "catch-up award" -- the same underlying pattern via a
+    different mechanic (a reappointment gap, not a recruitment buy-out).
+    Found via Kainos Group: "2025 Performance Share Plan (PSP) -- 'FY25 PSP'
+    (catch-up award for Brendan Mooney following reappointment as CEO)",
+    granted 23 June 2025 alongside the genuine, ongoing "FY26 PSP" grant --
+    verified against the raw extraction text (not hallucinated: real grant
+    date, real named individual, real metrics) and against a Glass Lewis
+    research report, which references only the standard FY2026/FY2027
+    grants and never this one-off, consistent with the same "not part of
+    the standing policy" pattern as Moonpig's buy-out awards.
     """
     if df.empty or "plan_name" not in df.columns:
         return df

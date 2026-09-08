@@ -293,33 +293,60 @@ def exclude_buyout_replacement_awards(df: pd.DataFrame) -> pd.DataFrame:
 
 
 _CFO_ONLY_RE = re.compile(r"\bCFO only\b", re.IGNORECASE)
+_AMBIGUOUS_ROLE_SCOPED_RE = re.compile(r"US[- ]based\b|US executive director", re.IGNORECASE)
 
 
-def exclude_other_executive_only_awards(df: pd.DataFrame) -> pd.DataFrame:
-    """Drop a plan explicitly scoped to the CFO alone -- it isn't part of the
-    CEO's own LTIP design, and every other CEO-anchored figure in this portal
-    (the "CEO LTIP opportunity" card, `apply_ltip_quantum_weighting`'s Policy
-    split) would be silently contradicted by pooling it in anyway.
+def exclude_other_executive_only_awards(df: pd.DataFrame, pol_df: pd.DataFrame = None) -> pd.DataFrame:
+    """Drop a plan explicitly scoped to a role other than the Group CEO --
+    it isn't part of the CEO's own LTIP design, and every other CEO-anchored
+    figure in this portal (the "CEO LTIP opportunity" card,
+    `apply_ltip_quantum_weighting`'s Policy split) would be silently
+    contradicted by pooling it in anyway.
 
-    Found via Vistry Group: "Restricted Share Award (Hybrid LTIP - CFO
-    only)" was being summed alongside the CEO's own 100%-weighted Performance
-    Share Award as if both applied to the same person, producing a spurious
-    200% bar -- but Vistry's Policy table shows the CEO's own
-    psp_max_percentage/rsp_max_percentage as blank: the CEO has no restricted
-    element at all, only the CFO does. Same root cause as BAE Systems, where
-    a *different* named individual ("President and Chief Executive Officer,
-    BAE Systems, Inc.", heading the US subsidiary, not the Group CEO) holds
-    a Restricted Shares award the actual Group CEO's PSP metrics were
-    wrongly scaled against -- handled separately in
-    `apply_ltip_quantum_weighting` by preferring the shortest matching CEO
-    title, since that case has no clean plan_name phrase to filter on.
-    Deliberately narrow (only the literal "CFO only" phrase) to avoid ever
-    excluding a plan that genuinely is the CEO's own.
+    "CFO only" is unambiguous and always excluded regardless of the CEO's
+    own Policy split -- by definition it can never be the CEO's own award,
+    even once the CEO separately has a genuine restricted element of their
+    own (Vistry Group has both: a CEO-specific Restricted Share Award
+    confirmed by a later RNS, AND a separate CFO-only one from the same AR
+    -- cross-checking only "does the CEO have some populated
+    rsp_max_percentage" would wrongly let the CFO-only one back in once the
+    CEO's own was added).
+
+    A "US executive director(s)" / "US-based" scope is genuinely ambiguous,
+    though -- it might describe a different, separately-Policy'd individual
+    (BAE Systems: "President and Chief Executive Officer, BAE Systems,
+    Inc." heads a distinct US-employees LTIP with its own larger, hybrid
+    opportunity, confirmed via a Glass Lewis research report to be entirely
+    separate from the Group CEO's UK-employees, performance-shares-only
+    policy) or it might genuinely BE the CEO (Smith & Nephew: "Restricted
+    Share Plan (RSP) - US Executive Directors" applies because that CEO,
+    Deepak Nath, is himself a US executive director -- confirmed by his own
+    Policy row disclosing a matching 300/125 psp/rsp split). Resolved by
+    cross-checking `_true_ceo_policy_rows(pol_df)`: only excluded when that
+    company's own CEO Policy row shows no matching rsp_max_percentage at
+    all. Without `pol_df`, only the unambiguous "CFO only" phrasing is
+    excluded, matching the previous, narrower behaviour.
     """
     if df.empty or "plan_name" not in df.columns:
         return df
-    mask = ~df["plan_name"].astype(str).str.contains(_CFO_ONLY_RE, na=False)
-    return df[mask]
+    plan_names = df["plan_name"].astype(str)
+    # Unconditional: "CFO only" can never be the CEO's own award, regardless
+    # of whether the CEO separately has some other restricted element of
+    # their own (found via Vistry Group, which has *both* -- a CEO-specific
+    # Restricted Share Award confirmed by a later RNS, AND a separately
+    # CFO-only one from the same AR; checking only "does the CEO have some
+    # populated rsp_max_percentage" wrongly let the CFO-only one back in
+    # once the CEO's own was added).
+    drop_mask = plan_names.str.contains(_CFO_ONLY_RE, na=False)
+
+    if pol_df is not None and not pol_df.empty:
+        ambiguous = plan_names.str.contains(_AMBIGUOUS_ROLE_SCOPED_RE, na=False)
+        if ambiguous.any():
+            ceo_pol = _true_ceo_policy_rows(pol_df)
+            ceo_has_rsp = set(ceo_pol.loc[ceo_pol["rsp_max_percentage"].notna(), "company_name"])
+            drop_mask = drop_mask | (ambiguous & ~df["company_name"].isin(ceo_has_rsp))
+
+    return df[~drop_mask]
 
 
 def dedupe_duplicate_plans(df: pd.DataFrame) -> pd.DataFrame:
@@ -393,6 +420,28 @@ def prefer_latest_ar_vintage(df: pd.DataFrame, year_col: str = "grant_year") -> 
     return df[df["file_name"] == latest_file]
 
 
+def _true_ceo_policy_rows(pol_df: pd.DataFrame) -> pd.DataFrame:
+    """Best-available proxy for "the Group CEO's own Policy row" per company.
+
+    A plain "chief exec" match can catch more than one person -- e.g. BAE
+    Systems discloses Policy figures for both "Chief Executive" (the actual
+    Group CEO, Charles Woodburn, UK-based) and "President and Chief
+    Executive Officer, BAE Systems, Inc." (a different, named individual
+    heading the US subsidiary, confirmed by a Glass Lewis research report to
+    sit under an entirely separate US-employees LTIP policy with its own,
+    larger, hybrid opportunity). The subsidiary/regional title is reliably
+    the longer, more qualified one -- keep only the shortest matching title
+    per company as the best proxy for the group-level role.
+    """
+    ceo_pol = pol_df[pol_df["position"].astype(str).str.contains("chief exec|CEO", case=False, na=False)].copy()
+    if ceo_pol.empty:
+        return ceo_pol
+    shortest_len = ceo_pol.groupby("company_name")["position"].transform(
+        lambda s: s.astype(str).str.len().min()
+    )
+    return ceo_pol[ceo_pol["position"].astype(str).str.len() == shortest_len]
+
+
 def apply_ltip_quantum_weighting(ltip_df: pd.DataFrame, pol_df: pd.DataFrame) -> pd.DataFrame:
     """Rescale a hybrid PSP+RSP award's metric weights by their true share of
     total LTIP opportunity, for the metric-mix chart only.
@@ -421,22 +470,7 @@ def apply_ltip_quantum_weighting(ltip_df: pd.DataFrame, pol_df: pd.DataFrame) ->
     if pol_df.empty or "psp_max_percentage" not in pol_df.columns:
         return ltip_df
 
-    ceo_pol = pol_df[pol_df["position"].astype(str).str.contains("chief exec|CEO", case=False, na=False)].copy()
-    # Some companies disclose Policy figures for more than one "chief
-    # executive"-titled person -- e.g. BAE Systems has both "Chief Executive"
-    # (the actual Group CEO, Charles Woodburn) and "President and Chief
-    # Executive Officer, BAE Systems, Inc." (a different, named individual
-    # heading the US subsidiary, who separately gets his own Restricted
-    # Shares award). A plain "chief exec" match catches both, and picking
-    # the wrong one applies a different person's split to the whole
-    # company's shared PSP metrics. The subsidiary/regional title is
-    # reliably the longer, more qualified one -- keep only the shortest
-    # matching title per company as the best proxy for the group-level role.
-    if not ceo_pol.empty:
-        shortest_len = ceo_pol.groupby("company_name")["position"].transform(
-            lambda s: s.astype(str).str.len().min()
-        )
-        ceo_pol = ceo_pol[ceo_pol["position"].astype(str).str.len() == shortest_len]
+    ceo_pol = _true_ceo_policy_rows(pol_df)
     split = ceo_pol[
         ceo_pol["psp_max_percentage"].notna()
         & ceo_pol["rsp_max_percentage"].notna()

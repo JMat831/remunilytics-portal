@@ -217,6 +217,8 @@ stip_all = scope(data, "stip", UNIVERSE)
 pay_all = scope(data, "pay", UNIVERSE)
 pol_all = scope(data, "policy", UNIVERSE)
 
+pol_latest = latest_per_company(pol_all, "financial_year")
+
 own_year = latest_grant_year(ltip_all, COMPANY)
 # latest_per_company also breaks ties when the same grant_year is described
 # across multiple AR vintages (see its docstring) — no separate call needed.
@@ -227,10 +229,11 @@ ltip_latest = exclude_deferred_bonus_plans(ltip_latest)  # DABP is STIP, not LTI
 # A recruitment buy-out/replacement award mirrors a PREVIOUS employer's plan
 # terms for one named individual — not this company's own LTIP design.
 ltip_latest = exclude_buyout_replacement_awards(ltip_latest)
-# A plan explicitly scoped to the CFO alone isn't part of the CEO's own
-# LTIP design -- pooling it in silently contradicts every other
-# CEO-anchored figure elsewhere in this portal.
-ltip_latest = exclude_other_executive_only_awards(ltip_latest)
+# A plan explicitly scoped to a role other than the Group CEO (CFO-only, or
+# a different Policy'd individual entirely, e.g. a US-subsidiary head)
+# isn't part of the CEO's own LTIP design -- pooling it in silently
+# contradicts every other CEO-anchored figure elsewhere in this portal.
+ltip_latest = exclude_other_executive_only_awards(ltip_latest, pol_latest)
 # Some ARs describe one grant twice (a policy table AND a granted-awards
 # table), producing two near-identically-worded plans with the same metrics
 # and weights. Left in, this silently doubles weight-sum totals — dedupe once
@@ -240,7 +243,6 @@ ltip_own = ltip_latest[ltip_latest["company_name"] == COMPANY]
 ltip_primary = ltip_own[ltip_own.get("is_sub_metric", pd.Series(False, index=ltip_own.index)).fillna(False) == False] \
     if "is_sub_metric" in ltip_own.columns else ltip_own
 
-pol_latest = latest_per_company(pol_all, "financial_year")
 pay_latest = latest_per_company(pay_all, "financial_year")
 
 TABS = ["Overview", "Long-Term Incentive", "Annual Bonus", "Policy"]

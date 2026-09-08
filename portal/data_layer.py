@@ -455,15 +455,23 @@ def apply_ltip_quantum_weighting(ltip_df: pd.DataFrame, pol_df: pd.DataFrame) ->
     Group, whose Policy already discloses the 300/150 split -- see
     psp_max_percentage/rsp_max_percentage below).
 
-    Only applies when Policy discloses BOTH halves of the split for the CEO,
-    the RSP is currently active, and the mechanism is explicitly "additive"
-    (both elements granted in full every year) -- a "substitutive" split
-    (e.g. Antofagasta, where the RSP portion substitutes for PSP rather than
-    adding to it) already produces one coherent ~100% award and must not be
-    rescaled. Only triggers when the plans cleanly separate into exactly one
-    RSP-like and one PSP-like plan_name; anything messier (three plans, or a
-    disclosed split with no RSP-named plan among the grant's rows) is left
-    untouched rather than guessed at.
+    Only applies when Policy discloses BOTH halves of the split for the CEO
+    and the RSP is currently active, with mechanism "additive" (both
+    elements granted in full every year, e.g. Burberry's fixed 300/150) or
+    "substitutive" (a fixed trade-off within one overall cap, e.g.
+    Antofagasta: Policy states "minimum of 70%" performance / "maximum of
+    30%" restricted, and both FY2025 and FY2026 were confirmed granted at
+    exactly that 70/30 split -- a Glass Lewis research report was needed to
+    confirm this isn't a genuine either/or alternative, which the existing
+    raw-sum-near-100 check below already guards against regardless). For a
+    substitutive plan, the disclosed `ltip_max_percentage` is used as the
+    true total rather than psp_max + rsp_max -- Antofagasta's psp_max (300)
+    is a ceiling assuming zero restricted is used, not the actual granted
+    amount, so summing it with rsp_max (90) would overstate the total to
+    390% instead of the real 300% cap. Only triggers when the plans cleanly
+    separate into exactly one RSP-like and one PSP-like plan_name; anything
+    messier (three plans, or a disclosed split with no RSP-named plan among
+    the grant's rows) is left untouched rather than guessed at.
     """
     if ltip_df.empty or "plan_name" not in ltip_df.columns:
         return ltip_df
@@ -475,7 +483,7 @@ def apply_ltip_quantum_weighting(ltip_df: pd.DataFrame, pol_df: pd.DataFrame) ->
         ceo_pol["psp_max_percentage"].notna()
         & ceo_pol["rsp_max_percentage"].notna()
         & (ceo_pol["rsp_status"].astype(str).str.lower() == "active")
-        & (ceo_pol["ltip_hybrid_mechanism"].astype(str).str.lower() == "additive")
+        & ceo_pol["ltip_hybrid_mechanism"].astype(str).str.lower().isin(["additive", "substitutive"])
     ].drop_duplicates(subset="company_name", keep="last").set_index("company_name")
     if split.empty:
         return ltip_df
@@ -487,7 +495,17 @@ def apply_ltip_quantum_weighting(ltip_df: pd.DataFrame, pol_df: pd.DataFrame) ->
             continue
         psp_max = split.loc[company, "psp_max_percentage"]
         rsp_max = split.loc[company, "rsp_max_percentage"]
-        total = psp_max + rsp_max
+        # Use the disclosed overall cap as the true total, not psp_max +
+        # rsp_max: for an "additive" plan the two always sum to it anyway,
+        # but for a "substitutive" one (Antofagasta: performance ranges
+        # 210-300% trading off against restricted's 0-90%, always summing
+        # to a fixed 300% cap) psp_max is a ceiling assuming zero restricted
+        # is used, not the actual granted amount -- summing the two would
+        # overstate the total (390% instead of 300%) and understate the
+        # restricted share (23.1% instead of the confirmed 30%).
+        total = split.loc[company, "ltip_max_percentage"] if "ltip_max_percentage" in split.columns else None
+        if pd.isna(total) or not total:
+            total = psp_max + rsp_max
         if not total:
             out_frames.append(grp)
             continue
@@ -526,8 +544,12 @@ def apply_ltip_quantum_weighting(ltip_df: pd.DataFrame, pol_df: pd.DataFrame) ->
         if not (90 <= psp_raw <= 110) or not (rsp_raw == 0 or 90 <= rsp_raw <= 110):
             out_frames.append(grp)
             continue
-        psp_share = psp_max / total
+        # rsp_share from rsp_max directly, psp_share as the remainder of the
+        # true total -- NOT psp_max / total, since for a substitutive plan
+        # psp_max is a ceiling (fully performance, zero restricted used),
+        # not the actual granted amount.
         rsp_share = rsp_max / total
+        psp_share = 1 - rsp_share
         psp_rows = grp.loc[is_psp].copy()
         psp_rows["weight_percentage"] = psp_rows["weight_percentage"] * psp_share
         rsp_row = grp.loc[is_rsp].iloc[[0]].copy()

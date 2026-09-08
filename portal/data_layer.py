@@ -305,7 +305,7 @@ def exclude_buyout_replacement_awards(df: pd.DataFrame) -> pd.DataFrame:
 
 
 _CFO_ONLY_RE = re.compile(r"\bCFO only\b", re.IGNORECASE)
-_AMBIGUOUS_ROLE_SCOPED_RE = re.compile(r"US[- ]based\b|US executive director", re.IGNORECASE)
+_AMBIGUOUS_ROLE_SCOPED_RE = re.compile(r"US executive director", re.IGNORECASE)
 
 
 def exclude_other_executive_only_awards(df: pd.DataFrame, pol_df: pd.DataFrame = None) -> pd.DataFrame:
@@ -324,8 +324,8 @@ def exclude_other_executive_only_awards(df: pd.DataFrame, pol_df: pd.DataFrame =
     rsp_max_percentage" would wrongly let the CFO-only one back in once the
     CEO's own was added).
 
-    A "US executive director(s)" / "US-based" scope is genuinely ambiguous,
-    though -- it might describe a different, separately-Policy'd individual
+    A "US executive director(s)" scope is genuinely ambiguous, though -- it
+    might describe a different, separately-Policy'd individual
     (BAE Systems: "President and Chief Executive Officer, BAE Systems,
     Inc." heads a distinct US-employees LTIP with its own larger, hybrid
     opportunity, confirmed via a Glass Lewis research report to be entirely
@@ -338,6 +338,16 @@ def exclude_other_executive_only_awards(df: pd.DataFrame, pol_df: pd.DataFrame =
     company's own CEO Policy row shows no matching rsp_max_percentage at
     all. Without `pol_df`, only the unambiguous "CFO only" phrasing is
     excluded, matching the previous, narrower behaviour.
+
+    Deliberately narrow to the exact "US executive director" phrase -- an
+    earlier, broader version also matched "US-based", which turned out to
+    be a bad proxy: Ashtead Group's genuine "Restricted Stock Unit (RSU)
+    Awards... (US-based directors only)" got wrongly excluded even though
+    it's a normal underpin structure with no evidence it belongs to anyone
+    other than that company's own CEO -- Policy simply never captured a
+    populated rsp_max_percentage for it, which isn't proof of anything
+    (found by sweeping the whole dataset for totals after this function
+    ran and finding ~28 companies newly below 100%, not just Ashtead).
     """
     if df.empty or "plan_name" not in df.columns:
         return df
@@ -406,6 +416,90 @@ def dedupe_duplicate_plans(df: pd.DataFrame) -> pd.DataFrame:
         axis=1,
     )
     return df[mask]
+
+
+def prefer_forward_looking_grant(df: pd.DataFrame) -> pd.DataFrame:
+    """When the same (company, grant_year) holds two plans describing the
+    SAME underlying metric design at two different points in its life --
+    one already 'granted' (this year's completed award) and one 'announced'
+    for the NEXT performance cycle -- keep only the more forward-looking
+    one, by `performance_end_year`.
+
+    Found via Travis Perkins: a "Performance Share Plan (PSP)" granted 19
+    June 2025 (EPS/ROCE/TSR at 33.3% each, performance ending FY27) and a
+    second "Performance Share Plan (PSP)" announced for the next cycle
+    (same three metrics, performance ending FY28, targets rebased) both got
+    tagged `grant_year=2025` -- both are real, correctly-extracted grants
+    (verified against a Glass Lewis research report, whose FY2025 and
+    FY2026 target columns match each row exactly), just sequential rather
+    than simultaneous, so stacking them doubles the chart to ~200%. Same
+    root cause at Future Plc: a granted 2025 PSP (FY27 end) and an
+    announced "FY 2026 award" PSP (FY28 end) share `grant_year=2025` too.
+
+    Deliberately scoped to near-identical metric-NAME overlap between the
+    two plans (at least 2 shared names, or half of the smaller plan's
+    metrics) rather than triggering on "mixed grant_status present" alone --
+    a genuine same-year hybrid award (e.g. Vistry's PSP + RSP components)
+    uses entirely different metric names for each part and must never be
+    collapsed by this function; it is a different design pattern from one
+    metric set repeated across two disclosure points.
+    """
+    if df.empty or "plan_name" not in df.columns or "metric_name" not in df.columns:
+        return df
+
+    def _norm_metric(name) -> str:
+        # Strip a trailing parenthetical year/period annotation ("Adjusted
+        # EPS (2027 final year)" vs "Adjusted EPS") so the same underlying
+        # metric compared across two disclosure years is recognised as one,
+        # not treated as unrelated text.
+        s = re.sub(r"\s*\([^)]*\)\s*$", "", str(name)).strip().lower()
+        return s
+
+    drop_idx = set()
+    for (_co, _gy), grp in df.groupby(["company_name", "grant_year"], dropna=False):
+        # Group into "instances" by (plan_name, grant_status,
+        # performance_end_year), not plan_name alone -- two genuinely
+        # different sequential grants can share the exact same literal
+        # plan_name (Travis Perkins: both are "Performance Share Plan
+        # (PSP)"), and comparing only by plan_name would collapse them into
+        # one indistinguishable group before any comparison ever runs.
+        instance_key = (
+            grp["plan_name"].astype(str) + "||"
+            + grp["grant_status"].astype(str) + "||"
+            + grp["performance_end_year"].astype(str)
+        )
+        keys = instance_key.unique()
+        if len(keys) < 2:
+            continue
+        instances = [(k, grp[instance_key == k]) for k in keys]
+        for i, (key_a, sub_a) in enumerate(instances):
+            for key_b, sub_b in instances[i + 1:]:
+                a = set(sub_a["metric_name"].map(_norm_metric))
+                b = set(sub_b["metric_name"].map(_norm_metric))
+                if not a or not b:
+                    continue
+                overlap = len(a & b)
+                if overlap < 2 and overlap / min(len(a), len(b)) < 0.5:
+                    continue  # not the same underlying design -- leave alone
+
+                ey_a = parse_fiscal_year(pd.Series([sub_a["performance_end_year"].iloc[0]])).dropna().tolist()
+                ey_b = parse_fiscal_year(pd.Series([sub_b["performance_end_year"].iloc[0]])).dropna().tolist()
+                ey_a = ey_a[0] if ey_a else None
+                ey_b = ey_b[0] if ey_b else None
+                loser_sub = None
+                if ey_a is not None and ey_b is not None and ey_a != ey_b:
+                    loser_sub = sub_a if ey_a < ey_b else sub_b
+                else:
+                    st_a = str(sub_a["grant_status"].iloc[0]).lower()
+                    st_b = str(sub_b["grant_status"].iloc[0]).lower()
+                    if st_a == "granted" and st_b == "announced":
+                        loser_sub = sub_a
+                    elif st_b == "granted" and st_a == "announced":
+                        loser_sub = sub_b
+                if loser_sub is not None:
+                    drop_idx.update(loser_sub.index)
+
+    return df.drop(index=drop_idx) if drop_idx else df
 
 
 def prefer_latest_ar_vintage(df: pd.DataFrame, year_col: str = "grant_year") -> pd.DataFrame:

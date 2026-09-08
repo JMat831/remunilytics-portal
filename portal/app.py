@@ -20,7 +20,7 @@ from data_layer import (
     scope, latest_grant_year, latest_per_company, provenance_summary,
     dedupe_duplicate_plans, exclude_deferred_bonus_plans,
     exclude_buyout_replacement_awards, exclude_other_executive_only_awards,
-    parse_fiscal_year, prefer_latest_ar_vintage,
+    prefer_forward_looking_grant, parse_fiscal_year, prefer_latest_ar_vintage,
     apply_ltip_quantum_weighting, TIER_LABEL,
 )
 from source_render import has_box, render_citation
@@ -234,6 +234,11 @@ ltip_latest = exclude_buyout_replacement_awards(ltip_latest)
 # isn't part of the CEO's own LTIP design -- pooling it in silently
 # contradicts every other CEO-anchored figure elsewhere in this portal.
 ltip_latest = exclude_other_executive_only_awards(ltip_latest, pol_latest)
+# The same nominal grant_year can hold both an already-completed grant AND
+# a forward announcement for the NEXT performance cycle (same metric
+# design, different target years) -- sequential, not simultaneous, so
+# stacking them doubles the chart.
+ltip_latest = prefer_forward_looking_grant(ltip_latest)
 # Some ARs describe one grant twice (a policy table AND a granted-awards
 # table), producing two near-identically-worded plans with the same metrics
 # and weights. Left in, this silently doubles weight-sum totals — dedupe once

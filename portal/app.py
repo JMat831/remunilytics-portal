@@ -21,7 +21,7 @@ from data_layer import (
     dedupe_duplicate_plans, exclude_deferred_bonus_plans,
     exclude_buyout_replacement_awards, exclude_other_executive_only_awards,
     prefer_forward_looking_grant, parse_fiscal_year, prefer_latest_ar_vintage,
-    apply_ltip_quantum_weighting, TIER_LABEL,
+    apply_ltip_quantum_weighting, apply_plan_name_quantum_weighting, TIER_LABEL,
 )
 from source_render import has_box, render_citation
 
@@ -455,6 +455,10 @@ with T["Long-Term Incentive"]:
             # opportunity before aggregating -- otherwise two plans that each
             # sum to ~100% on their own stack to ~200% (see docstring).
             mix_src = apply_ltip_quantum_weighting(ltip_latest, pol_latest)
+            # A second, independent source of quantum split: some plans state
+            # their share directly in the plan name ("Core award (200% of
+            # salary)") rather than via Policy's psp/rsp fields.
+            mix_src = apply_plan_name_quantum_weighting(mix_src)
             has_weight = mix_src["weight_percentage"].notna()
             mix_src["canonical_metric"] = mix_src["canonical_metric"].where(
                 mix_src["canonical_metric"].notna() | ~has_weight, "other"

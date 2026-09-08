@@ -667,6 +667,76 @@ def apply_ltip_quantum_weighting(ltip_df: pd.DataFrame, pol_df: pd.DataFrame) ->
     return pd.concat(out_frames, ignore_index=True) if out_frames else ltip_df
 
 
+_PLAN_QUANTUM_RE = re.compile(r"\(\s*(\d+(?:\.\d+)?)\s*%\s*of\s*salary\s*\)", re.IGNORECASE)
+
+
+def apply_plan_name_quantum_weighting(ltip_df: pd.DataFrame) -> pd.DataFrame:
+    """Rescale metric weights across two or more genuinely additive plan
+    components whose quantum share is stated directly in the plan_name
+    text, without needing Policy's psp_max_percentage/rsp_max_percentage
+    fields at all.
+
+    Found via Oxford Instruments: "Long-Term Incentive Plan (LTIP) - Core
+    award (200% of salary)" (EPS 30% / ROCE 30% / Relative TSR 25% /
+    emissions 15%) and "...Strategic Stretch award (100% of salary)" (EPS
+    50% / Profit margin 50%) -- both genuine, both weighted, both
+    performance-conditioned (unlike a PSP+RSP hybrid, the "stretch" element
+    isn't a restricted/time-based award, so `apply_ltip_quantum_weighting`'s
+    RSP-detection never fires for it, and it isn't a Policy-disclosed
+    psp/rsp split either -- Oxford Instruments' Policy row has neither
+    field populated). Verified against a Glass Lewis research report,
+    whose FY2026/27 metrics table matches both components exactly, and
+    which states the same 300% total (200% core + 100% stretch).
+
+    Unlike the RSP case, no relabelling is needed here -- each metric keeps
+    its own canonical_metric (EPS stays "eps", ROCE stays
+    "return_on_capital", etc.), just scaled by its parent plan's share of
+    the combined total.
+
+    Deliberately conservative: only triggers when EVERY distinct plan_name
+    for a (company, grant_year) states an explicit "(N% of salary)"
+    quantum and each plan's own raw weights already sum to ~100% on their
+    own -- anything messier (a plan with no stated quantum, or one whose
+    raw weights aren't already a complete award) is left untouched.
+    """
+    if ltip_df.empty or "plan_name" not in ltip_df.columns:
+        return ltip_df
+
+    out_frames = []
+    for (_co, _gy), grp in ltip_df.groupby(["company_name", "grant_year"], dropna=False):
+        plans = grp["plan_name"].unique()
+        if len(plans) < 2:
+            out_frames.append(grp)
+            continue
+        quanta = {}
+        for pn in plans:
+            m = _PLAN_QUANTUM_RE.search(str(pn))
+            if not m:
+                quanta = {}
+                break
+            quanta[pn] = float(m.group(1))
+        if len(quanta) != len(plans):
+            out_frames.append(grp)
+            continue
+        raw_sums = {pn: grp.loc[grp["plan_name"] == pn, "weight_percentage"].sum() for pn in plans}
+        if any(not (90 <= s <= 110) for s in raw_sums.values()):
+            out_frames.append(grp)
+            continue
+
+        total = sum(quanta.values())
+        if not total:
+            out_frames.append(grp)
+            continue
+        scaled = grp.copy()
+        for pn in plans:
+            share = quanta[pn] / total
+            mask = scaled["plan_name"] == pn
+            scaled.loc[mask, "weight_percentage"] = scaled.loc[mask, "weight_percentage"] * share
+        out_frames.append(scaled)
+
+    return pd.concat(out_frames, ignore_index=True) if out_frames else ltip_df
+
+
 def provenance_summary(frames) -> dict:
     """Aggregate source-precision counts across the frames shown to a recipient."""
     counts = {3: 0, 2: 0, 1: 0, 0: 0}

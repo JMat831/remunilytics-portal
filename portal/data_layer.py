@@ -623,12 +623,22 @@ def apply_ltip_quantum_weighting(ltip_df: pd.DataFrame, pol_df: pd.DataFrame) ->
         # "2024 HPSP" names both elements in one plan, splitting them out
         # only at the metric_name level) -- check both. Also covers a
         # non-restricted "second element" that Policy still discloses as an
-        # additive psp/rsp-style split (Diageo's SESOP share options, whose
+        # additive psp/rsp-style split: Diageo's SESOP share options (whose
         # performance conditions were removed, making it price/time-driven
-        # like an RSP even though it isn't literally restricted shares).
+        # like an RSP even though it isn't literally restricted shares), and
+        # an "Exceptional"-named second plan (Cranswick: a separate
+        # "Exceptional Performance LTIP" alongside the ordinary "Core LTIP",
+        # confirmed additive at a 2/3-1/3 CEO split -- genuinely
+        # performance-conditioned on Relative TSR, not restricted at all,
+        # so unlike a true RSP its own metric identity must be kept, not
+        # relabelled -- see is_generic_restricted below).
         is_rsp = (
             (plan_names.str.contains(r"\brsp\b|restricted share", case=False, regex=True)
              & ~plan_names.str.contains("performance", case=False))
+            # "exceptional" is checked separately, NOT excluded by
+            # "performance" appearing too -- Cranswick's plan is literally
+            # named "Exceptional Performance Long Term Incentive Plan".
+            | plan_names.str.contains("exceptional", case=False)
             | metric_names.str.contains(r"\brsp\b|restricted share|time-based restricted award|\bsesop\b",
                                         case=False, regex=True)
         )
@@ -658,12 +668,33 @@ def apply_ltip_quantum_weighting(ltip_df: pd.DataFrame, pol_df: pd.DataFrame) ->
         psp_share = 1 - rsp_share
         psp_rows = grp.loc[is_psp].copy()
         psp_rows["weight_percentage"] = psp_rows["weight_percentage"] * psp_share
-        rsp_row = grp.loc[is_rsp].iloc[[0]].copy()
-        rsp_row["metric_name"] = "Restricted (time-based) award"
-        if "canonical_metric" in rsp_row.columns:
-            rsp_row["canonical_metric"] = "restricted_time_based"
-        rsp_row["weight_percentage"] = rsp_share * 100.0
-        out_frames.append(pd.concat([psp_rows, rsp_row], ignore_index=True))
+        # A genuine restricted/time-based/option element (no real
+        # performance metric identity of its own, e.g. Burberry's RSP
+        # underpins or Diageo's SESOP) collapses to one clearly-labelled
+        # synthetic segment, as before. But an "Exceptional"-style second
+        # plan (Cranswick: Relative TSR at 100%) IS a real, meaningful
+        # metric -- collapsing it would silently discard its true identity
+        # and misreport it as "Restricted (time-based)". Only collapse when
+        # every row genuinely reads as generic restricted content;
+        # otherwise scale each row in place, same as the PSP side.
+        rsp_rows = grp.loc[is_rsp]
+        is_generic_restricted = rsp_rows["metric_name"].astype(str).str.contains(
+            r"time-based restricted award|\bsesop\b|restricted share", case=False, regex=True
+        )
+        # Pure pass/fail underpins (Burberry: null weight throughout, so
+        # rsp_raw computed above is 0) never carry a meaningful metric
+        # identity to preserve, whatever their text happens to say --
+        # collapse them regardless of the text-pattern check.
+        if rsp_raw == 0 or is_generic_restricted.all():
+            rsp_out = rsp_rows.iloc[[0]].copy()
+            rsp_out["metric_name"] = "Restricted (time-based) award"
+            if "canonical_metric" in rsp_out.columns:
+                rsp_out["canonical_metric"] = "restricted_time_based"
+            rsp_out["weight_percentage"] = rsp_share * 100.0
+        else:
+            rsp_out = rsp_rows.copy()
+            rsp_out["weight_percentage"] = rsp_out["weight_percentage"] * rsp_share
+        out_frames.append(pd.concat([psp_rows, rsp_out], ignore_index=True))
     return pd.concat(out_frames, ignore_index=True) if out_frames else ltip_df
 
 

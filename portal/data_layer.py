@@ -639,6 +639,13 @@ def apply_ltip_quantum_weighting(ltip_df: pd.DataFrame, pol_df: pd.DataFrame) ->
             # "performance" appearing too -- Cranswick's plan is literally
             # named "Exceptional Performance Long Term Incentive Plan".
             | plan_names.str.contains("exceptional", case=False)
+            # Deliberately narrow to "stretch award"/"stretch ltip element"
+            # (Drax: "...Stretch LTIP element"; Oxford Instruments:
+            # "Strategic Stretch award...") -- a bare "stretch" would also
+            # match IAG SA's "Stretch Performance Incentive Plan (SPIP)",
+            # which is that company's PRIMARY award, not a smaller second
+            # component, and would invert its classification entirely.
+            | plan_names.str.contains(r"stretch (?:award|ltip element)", case=False, regex=True)
             | metric_names.str.contains(r"\brsp\b|restricted share|time-based restricted award|\bsesop\b",
                                         case=False, regex=True)
         )

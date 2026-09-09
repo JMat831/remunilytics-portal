@@ -589,7 +589,8 @@ def apply_ltip_quantum_weighting(ltip_df: pd.DataFrame, pol_df: pd.DataFrame) ->
         ceo_pol["psp_max_percentage"].notna()
         & ceo_pol["rsp_max_percentage"].notna()
         & (ceo_pol["rsp_status"].astype(str).str.lower() == "active")
-        & ceo_pol["ltip_hybrid_mechanism"].astype(str).str.lower().isin(["additive", "substitutive"])
+        & ceo_pol["ltip_hybrid_mechanism"].astype(str).str.lower().isin(
+            ["additive", "substitutive", "approximate"])
     ].drop_duplicates(subset="company_name", keep="last").set_index("company_name")
     if split.empty:
         return ltip_df
@@ -601,17 +602,30 @@ def apply_ltip_quantum_weighting(ltip_df: pd.DataFrame, pol_df: pd.DataFrame) ->
             continue
         psp_max = split.loc[company, "psp_max_percentage"]
         rsp_max = split.loc[company, "rsp_max_percentage"]
-        # Use the disclosed overall cap as the true total, not psp_max +
-        # rsp_max: for an "additive" plan the two always sum to it anyway,
-        # but for a "substitutive" one (Antofagasta: performance ranges
-        # 210-300% trading off against restricted's 0-90%, always summing
-        # to a fixed 300% cap) psp_max is a ceiling assuming zero restricted
-        # is used, not the actual granted amount -- summing the two would
-        # overstate the total (390% instead of 300%) and understate the
-        # restricted share (23.1% instead of the confirmed 30%).
-        total = split.loc[company, "ltip_max_percentage"] if "ltip_max_percentage" in split.columns else None
-        if pd.isna(total) or not total:
+        mechanism = str(split.loc[company, "ltip_hybrid_mechanism"]).lower()
+        if mechanism == "approximate":
+            # A placeholder ratio, not a real disclosed maximum -- Experian's
+            # Co-Investment Plan has no fixed %-of-salary cap at all (its
+            # size depends on how much bonus the executive chose to invest
+            # that year), so psp_max/rsp_max here are a one-year,
+            # share-count-derived ratio (e.g. 33/67) rather than real salary
+            # percentages. ltip_max_percentage still holds the PSP's own
+            # disclosed cap (200%, correct for the "CEO LTIP opportunity"
+            # card elsewhere) and must NOT be used as the combined total
+            # here -- trust the ratio's own sum instead.
             total = psp_max + rsp_max
+        else:
+            # Use the disclosed overall cap as the true total, not psp_max +
+            # rsp_max: for an "additive" plan the two always sum to it anyway,
+            # but for a "substitutive" one (Antofagasta: performance ranges
+            # 210-300% trading off against restricted's 0-90%, always summing
+            # to a fixed 300% cap) psp_max is a ceiling assuming zero restricted
+            # is used, not the actual granted amount -- summing the two would
+            # overstate the total (390% instead of 300%) and understate the
+            # restricted share (23.1% instead of the confirmed 30%).
+            total = split.loc[company, "ltip_max_percentage"] if "ltip_max_percentage" in split.columns else None
+            if pd.isna(total) or not total:
+                total = psp_max + rsp_max
         if not total:
             out_frames.append(grp)
             continue
@@ -646,6 +660,10 @@ def apply_ltip_quantum_weighting(ltip_df: pd.DataFrame, pol_df: pd.DataFrame) ->
             # which is that company's PRIMARY award, not a smaller second
             # component, and would invert its classification entirely.
             | plan_names.str.contains(r"stretch (?:award|ltip element)", case=False, regex=True)
+            # Experian's Co-Investment Plan (CIP) -- bonus-matched shares,
+            # not a fixed %-of-salary award, but additive alongside its PSP
+            # nonetheless (see the "approximate" mechanism above).
+            | plan_names.str.contains(r"co-investment plan|\bcip\b", case=False, regex=True)
             | metric_names.str.contains(r"\brsp\b|restricted share|time-based restricted award|\bsesop\b",
                                         case=False, regex=True)
         )

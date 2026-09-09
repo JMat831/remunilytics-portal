@@ -502,6 +502,47 @@ def prefer_forward_looking_grant(df: pd.DataFrame) -> pd.DataFrame:
     return df.drop(index=drop_idx) if drop_idx else df
 
 
+_TRANSITION_RE = re.compile(r"transitioning from\s+(\w+)\s+to\s+(\w+)", re.IGNORECASE)
+
+
+def prefer_replacement_plan(df: pd.DataFrame) -> pd.DataFrame:
+    """When a plan_name explicitly says it's a transition from one vehicle
+    to another (e.g. "Performance Share Plan (PSP) - FY27 awards
+    (transitioning from RSP to PSP)"), drop the OTHER plan(s) in the same
+    (company, grant_year) that name the vehicle being replaced.
+
+    Found via Pets At Home: an FY2026 Restricted Share Plan ("Time-based
+    restricted award (subject to underpin)", granted) and an FY2027
+    Performance Share Plan (Relative TSR + Absolute EPS growth, announced)
+    share `grant_year=2026` and stack to 200% -- but unlike Burberry's
+    genuine additive PSP+RSP hybrid, the AR is explicit these are NOT
+    simultaneous: "the restricted share plan will be replaced with a
+    performance share plan... no restricted share awards will be granted
+    from FY2027." `prefer_forward_looking_grant` deliberately does not
+    catch this (RSP and PSP share zero metric names, which by design reads
+    as a genuine hybrid, not a refresh of the same design) -- this is a
+    third case neither of the other two functions covers: sequential, but
+    with an entirely different metric set. The explicit "transitioning
+    from X to Y" phrasing is a much more reliable signal than metric
+    overlap ever could be here.
+    """
+    if df.empty or "plan_name" not in df.columns:
+        return df
+    drop_idx = set()
+    for (_co, _gy), grp in df.groupby(["company_name", "grant_year"], dropna=False):
+        plan_names = grp["plan_name"].astype(str)
+        for pn in plan_names.unique():
+            m = _TRANSITION_RE.search(pn)
+            if not m:
+                continue
+            from_vehicle = m.group(1)
+            other_mask = (plan_names != pn) & plan_names.str.contains(
+                re.escape(from_vehicle), case=False, regex=True
+            )
+            drop_idx.update(grp[other_mask].index)
+    return df.drop(index=drop_idx) if drop_idx else df
+
+
 def prefer_latest_ar_vintage(df: pd.DataFrame, year_col: str = "grant_year") -> pd.DataFrame:
     """When the same (company, year) is described by more than one AR
     vintage on file (e.g. AO World's grant_year=2022 Value Creation Plan

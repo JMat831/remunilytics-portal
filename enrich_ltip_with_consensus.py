@@ -173,7 +173,11 @@ METRIC_NAME_RULES = [
     # conditions removed)" -- SESOP (Senior Executive Share Option Plan) is
     # specific enough to Diageo that matching it directly carries no
     # false-positive risk elsewhere.
-    ("restricted_time_based", [r"time-based restricted award", r"\bsesop\b"]),
+    # Harworth's "Core RSP Award" is the restricted, underpin-gated element
+    # of its Performance Flexed RSP (no performance conditions of its own,
+    # per the plan description) -- specific enough to Harworth's exact
+    # naming to carry no false-positive risk elsewhere.
+    ("restricted_time_based", [r"time-based restricted award", r"\bsesop\b", r"\bcore rsp award\b"]),
 
     # Joinable to consensus
     ("eps",                 [r"\beps\b", r"earnings per share"]),

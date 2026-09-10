@@ -21,6 +21,7 @@ from data_layer import (
     dedupe_duplicate_plans, exclude_deferred_bonus_plans,
     exclude_buyout_replacement_awards, exclude_other_executive_only_awards,
     prefer_forward_looking_grant, prefer_replacement_plan, parse_fiscal_year, prefer_latest_ar_vintage,
+    extract_underpin_note,
     apply_ltip_quantum_weighting, apply_plan_name_quantum_weighting, TIER_LABEL,
 )
 from source_render import has_box, render_citation
@@ -434,12 +435,24 @@ with T["Long-Term Incentive"]:
             _card_status = ""
             if not _is_announced and str(r.get("grant_status", "")).lower() == "announced":
                 _card_status = " <span class='rl-pill rl-t1'>Disclosed ahead of grant</span>"
+            # A metric-level underpin (gating this ONE metric, not the whole
+            # plan -- see the plan-level-vs-metric-level distinction) lives
+            # in additional_conditions, which is otherwise never shown on
+            # the card at all. Surface just the underpin sentence(s) inline,
+            # between the header and the threshold row, so it's visible
+            # without competing with the primary weight/threshold data.
+            _underpin = extract_underpin_note(r.get("additional_conditions"))
+            _underpin_html = (
+                f'<div class="rl-note" style="font-style:italic">{_underpin}</div>'
+                if _underpin else ""
+            )
             st.markdown(
                 f'<div class="rl-card" style="margin-bottom:.55rem">'
                 f'<div style="display:flex;justify-content:space-between;align-items:baseline;gap:1rem">'
                 f'  <div style="font-weight:700;font-size:1rem;color:#22303F">{r.get("metric_name")}{_card_status}</div>'
                 f'  <div style="font-size:1.15rem;font-weight:700;color:#1F4E79">{wt_s}</div>'
                 f'</div>'
+                f'{_underpin_html}'
                 f'<div class="rl-note">{rng}</div>'
                 f'<div style="margin-top:.45rem">{tier_pill(t)} &nbsp; {src_link(r.get("source_link"))}</div>'
                 f'</div>', unsafe_allow_html=True)

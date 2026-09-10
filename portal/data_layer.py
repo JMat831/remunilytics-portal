@@ -54,6 +54,31 @@ def source_page(value):
     return int(m.group(1)) if m else None
 
 
+def extract_underpin_note(additional_conditions) -> str | None:
+    """Pull out just the underpin-relevant sentence(s) from a metric's
+    additional_conditions text, for inline display on its own card.
+
+    additional_conditions is a free-text field that mixes several kinds of
+    detail (vesting mechanics, Committee discretion, one-off normalization
+    notes, and -- for a metric-level underpin -- the actual gating
+    condition), and was never rendered anywhere on the portal, making a
+    metric-specific underpin effectively invisible even though it's a real,
+    disclosed constraint on that metric's vesting. Rather than dump the
+    whole field (mostly noise for this purpose), split into sentences and
+    keep only the ones that mention "underpin" -- a metric-level underpin
+    reads naturally as its own sentence in this schema's extraction
+    convention (e.g. "... Underpin: Vesting of the stretch awards is
+    conditional on ..."). Returns None when there's nothing underpin-related
+    to show, so a card with an ordinary additional_conditions note doesn't
+    grow a blank line.
+    """
+    if not isinstance(additional_conditions, str) or not additional_conditions.strip():
+        return None
+    sentences = re.split(r"(?<=[.!?])\s+", additional_conditions.strip())
+    underpin_sentences = [s.strip() for s in sentences if "underpin" in s.lower()]
+    return " ".join(underpin_sentences) if underpin_sentences else None
+
+
 TIER_LABEL = {
     3: ("Exact", "Cited to the specific disclosure block in the report"),
     2: ("Page", "Matched to the page containing this value"),

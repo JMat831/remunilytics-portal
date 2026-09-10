@@ -474,8 +474,21 @@ def prefer_forward_looking_grant(df: pd.DataFrame) -> pd.DataFrame:
         instances = [(k, grp[instance_key == k]) for k in keys]
         for i, (key_a, sub_a) in enumerate(instances):
             for key_b, sub_b in instances[i + 1:]:
-                a = set(sub_a["metric_name"].map(_norm_metric))
-                b = set(sub_b["metric_name"].map(_norm_metric))
+                # Prefer the already-computed canonical_metric over raw
+                # metric_name text -- Smiths Group's "Enhanced LTIP Award"
+                # ("Relative Total Shareholder Return (TSR)") and its FY2026
+                # Award ("Relative TSR") both classify to the same
+                # `tsr_relative` category but share no exact substring even
+                # after stripping a trailing parenthetical, so a text-only
+                # overlap check misses them as unrelated. Excludes
+                # unclassified (None/NaN) values so two different
+                # "Other"-bucket metrics never falsely count as a match.
+                if "canonical_metric" in sub_a.columns:
+                    a = set(sub_a["canonical_metric"].dropna())
+                    b = set(sub_b["canonical_metric"].dropna())
+                else:
+                    a = set(sub_a["metric_name"].map(_norm_metric))
+                    b = set(sub_b["metric_name"].map(_norm_metric))
                 if not a or not b:
                     continue
                 overlap = len(a & b)

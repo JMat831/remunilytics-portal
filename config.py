@@ -580,6 +580,46 @@ PENDING TARGETS:
   value fields null. NEVER copy targets from an earlier grant year into a later one.
 - For metrics with fully disclosed targets, set "targets_pending": false (or omit it).
 
+WEIGHT_PERCENTAGE MUST BE NORMALISED TO THE PLAN'S OWN 100% — CONVERT, DON'T JUST FLAG:
+- weight_percentage is each metric's share OF ITS OWN PLAN. The metrics within a single plan
+  must sum to ~100%. If the source states weights against some other base, CONVERT them and
+  record the conversion in that metric's additional_conditions. Do not simply copy the
+  source's number and describe the discrepancy in prose — the number itself must be corrected.
+- Three shapes this actually takes, all seen in real ARs:
+  1. Weights quoted against a multiple-of-salary maximum rather than the plan: "each metric is
+     40% of the 200%-of-salary award" is 20% of the plan, not 40%. Five such metrics must come
+     out as 20/20/20/20/20, not 40/40/40/40/40 (which would sum to 200%).
+  2. A plan sized as a base award plus a fraction of it: a "core award of 100% of salary plus an
+     outperformance element of 0.33x the core, split 50/50 between two measures" is
+     75.2 / 12.4 / 12.4 once normalised (100, 16.5, 16.5 out of 133), not 100 / 16.5 / 16.5.
+  3. A COMBINED weight given for a GROUP of metrics: "Financial measures (35% combined:
+     Revenue, PBT, PBT Margin)" means those three share 35%, so ~11.67% each — it does NOT mean
+     35% each (which would triple-count the bucket to 105%).
+- If the source genuinely discloses only the combined figure for a group and gives no split
+  within it, divide the group's weight evenly across its members and say so explicitly in
+  additional_conditions, so the approximation is visible rather than implied precision.
+- Sanity-check before returning: add up weight_percentage across each plan's metrics. If a plan
+  totals well over 100%, you have almost certainly hit one of the three shapes above — go back
+  and convert, rather than emitting the raw figures.
+- Exception: a genuine pass/fail underpin with no weight of its own stays weight 0 or null and
+  is excluded from that sum (see the underpin rules in the extraction prompt).
+
+TARGET VALUE FIELDS — VALUE AND UNIT ONLY, NEVER THE MEASUREMENT METHOD:
+- threshold/target/stretch/exceptional "value" fields must carry the target QUANTITY and its
+  UNIT, and nothing else. Keep the unit — it changes what the number means: "10%", "$0.42",
+  "177.4p", "£2,650 million", "12 percentage points", "Median", "Upper quartile".
+- Do NOT append the measurement METHOD to the value. "CAGR", "p.a.", "per annum", "per year"
+  and "compound annual growth rate" all describe HOW the metric is measured over time, which
+  already belongs in "measurement_method" — putting it in the value field too makes the same
+  target read differently company to company purely on AR wording.
+  Write "10%", not "10% CAGR" / "10% p.a." / "10% per annum".
+- Do NOT restate the metric's own name in the value ("10% absolute TSR" -> "10%"); the metric
+  is already identified by metric_name.
+- Where a qualitative ranking names its comparator group (e.g. "Median vs FTSE 250 excluding
+  investment trusts"), put the ranking alone in the value field ("Median") and make sure the
+  comparator group is stated in metric_name or measurement_method, so that detail is kept
+  rather than dropped.
+
 GRANT STATUS:
 - Copy the plan's "Grant Status" line into the plan-level "grant_status" field: "granted" or
   "announced". If the text analysis gives no status, infer: "announced" when the plan is

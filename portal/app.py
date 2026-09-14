@@ -21,6 +21,7 @@ from data_layer import (
     dedupe_duplicate_plans, exclude_deferred_bonus_plans,
     exclude_buyout_replacement_awards, exclude_other_executive_only_awards,
     prefer_forward_looking_grant, prefer_replacement_plan, parse_fiscal_year, prefer_latest_ar_vintage,
+    ceo_rows,
     extract_underpin_note,
     apply_ltip_quantum_weighting, apply_plan_name_quantum_weighting, TIER_LABEL,
 )
@@ -286,10 +287,11 @@ with T["Overview"]:
              flag=(not pd.isna(peer_med_n) and own_n > peer_med_n + 1))
     with c2:
         pol_own = pol_latest[pol_latest["company_name"] == COMPANY]
-        ceo = pol_own[pol_own["position"].astype(str).str.contains("chief exec|CEO", case=False, na=False)]
+        # Sitting group CEO only — see ceo_rows(): a raw "chief exec|CEO" text
+        # match also pulls in Deputy/Interim/Former and subsidiary chief execs.
+        ceo = ceo_rows(pol_own)
         ltip_max = ceo["ltip_max_percentage"].dropna()
-        peers_max = pol_latest[(pol_latest["company_name"] != COMPANY) &
-                               pol_latest["position"].astype(str).str.contains("chief exec|CEO", case=False, na=False)]["ltip_max_percentage"].dropna()
+        peers_max = ceo_rows(pol_latest[pol_latest["company_name"] != COMPANY])["ltip_max_percentage"].dropna()
         if len(ltip_max):
             p = pctile(ltip_max.iloc[0], peers_max.tolist())
             card("CEO LTIP opportunity", f"{ltip_max.iloc[0]:.0f}%",
@@ -627,9 +629,8 @@ with T["Policy"]:
                              ("shareholding_guideline_percentage", "Shareholding guideline")]:
             if field not in pol_latest.columns:
                 continue
-            ceo_mask = pol_latest["position"].astype(str).str.contains("chief exec|CEO", case=False, na=False)
-            own_v = p_own[p_own["position"].astype(str).str.contains("chief exec|CEO", case=False, na=False)][field].dropna()
-            peer_v = peers_pol[peers_pol["position"].astype(str).str.contains("chief exec|CEO", case=False, na=False)][field].dropna()
+            own_v = ceo_rows(p_own)[field].dropna()
+            peer_v = ceo_rows(peers_pol)[field].dropna()
             if not len(own_v) or not len(peer_v):
                 continue
             ov = float(own_v.iloc[0])

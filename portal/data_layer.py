@@ -605,26 +605,39 @@ def prefer_latest_ar_vintage(df: pd.DataFrame, year_col: str = "grant_year") -> 
     return df[df["file_name"] == latest_file]
 
 
-def _true_ceo_policy_rows(pol_df: pd.DataFrame) -> pd.DataFrame:
-    """Best-available proxy for "the Group CEO's own Policy row" per company.
+def ceo_rows(df: pd.DataFrame) -> pd.DataFrame:
+    """The sitting Group CEO's row(s) per company.
 
-    A plain "chief exec" match can catch more than one person -- e.g. BAE
-    Systems discloses Policy figures for both "Chief Executive" (the actual
-    Group CEO, Charles Woodburn, UK-based) and "President and Chief
-    Executive Officer, BAE Systems, Inc." (a different, named individual
-    heading the US subsidiary, confirmed by a Glass Lewis research report to
-    sit under an entirely separate US-employees LTIP policy with its own,
-    larger, hybrid opportunity). The subsidiary/regional title is reliably
-    the longer, more qualified one -- keep only the shortest matching title
-    per company as the best proxy for the group-level role.
+    Uses the `canonical_position`/`position_status` columns produced by
+    `classify_position` (data_processing_functions.py), which resolve role and
+    tenure properly at build time. A plain "chief exec"/"CEO" text match --
+    what every consumer here used to do independently -- matches far more than
+    the sitting group CEO: Deputy CEOs, Interim and Former CEOs, divisional and
+    subsidiary chief executives (BAE Systems' "President and Chief Executive
+    Officer, BAE Systems, Inc.", a different named individual under an entirely
+    separate US-employees LTIP policy), and even a Finance Director described
+    as "(interim Primark Chief Executive)". Measured on the real data, that
+    text match hit more than one person in 62 company/years of pay data and 14
+    of policy.
+
+    This also retires the previous shortest-matching-title heuristic, which
+    happened to pick the right row for BAE but was never more than a proxy --
+    it would equally have preferred a short wrong title over a long right one.
+
+    Falls back to the old text match only if the canonical columns are absent
+    (e.g. a stale CSV predating them), so the portal degrades rather than
+    empties.
     """
-    ceo_pol = pol_df[pol_df["position"].astype(str).str.contains("chief exec|CEO", case=False, na=False)].copy()
-    if ceo_pol.empty:
-        return ceo_pol
-    shortest_len = ceo_pol.groupby("company_name")["position"].transform(
-        lambda s: s.astype(str).str.len().min()
-    )
-    return ceo_pol[ceo_pol["position"].astype(str).str.len() == shortest_len]
+    if df.empty:
+        return df
+    if "canonical_position" in df.columns and "position_status" in df.columns:
+        return df[(df["canonical_position"] == "CEO")
+                  & (df["position_status"] == "current")]
+    return df[df["position"].astype(str).str.contains("chief exec|CEO", case=False, na=False)]
+
+
+# Back-compat alias: this used to be the Policy-specific helper.
+_true_ceo_policy_rows = ceo_rows
 
 
 def apply_ltip_quantum_weighting(ltip_df: pd.DataFrame, pol_df: pd.DataFrame) -> pd.DataFrame:

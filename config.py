@@ -494,23 +494,38 @@ FIELD DEFINITIONS:
     - ADDITIVE hybrid (both elements granted in full, simultaneously, every year — e.g. a
       Performance Share Award of 425% PLUS a separate Restricted Share Award of 100%): this is
       the TOTAL, i.e. 525%.
-    - SUBSTITUTIVE hybrid (the restricted element is granted "in lieu of"/"instead of" a portion
-      of the performance element, usually at a discount — e.g. "up to 62.5% of salary in
+    - SUBSTITUTIVE hybrid (the second vehicle is granted "in lieu of"/"instead of" a portion
+      of the primary one, usually at a discount — e.g. "up to 62.5% of salary in
       Restricted Shares in lieu of PSP, reducing PSP down to 125%"): this is simply the
-      PERFORMANCE-ONLY maximum (e.g. 250%), NOT the sum — using the restricted element here
-      REDUCES the performance element rather than adding to it.
-- psp_max_percentage: the maximum PERFORMANCE-conditioned element (Performance Share Plan/Award)
-  as % of salary, ASSUMING the restricted element is not used. Only set when a restricted-element
-  provision exists at all (whether or not currently used).
-- rsp_max_percentage: the maximum RESTRICTED/time-based element (Restricted Share Plan/Award,
-  vesting on continued employment, no performance conditions or only a pass/fail underpin) as %
-  of salary — the ceiling IF used. IMPORTANT: set this whenever the report states a maximum for
-  this element, EVEN IF the company says it does not currently intend to use it (e.g. "the
+      PRIMARY-ONLY maximum (e.g. 250%), NOT the sum — using the second vehicle here
+      REDUCES the primary element rather than adding to it.
+  Where two vehicles are granted alongside each other (Core + Exceptional, core + stretch,
+  PSP + Co-Investment), the award is ADDITIVE and this figure is the combined total.
+TWO LTIP VEHICLES: capture the split whenever an executive receives MORE THAN ONE
+long-term incentive vehicle in the same year — whatever those vehicles are called.
+A second vehicle is very often NOT a restricted-share plan. Real examples, all of
+which must be captured:
+    "Core LTIP" + "Exceptional Performance LTIP"          (both performance-based)
+    "core element" + "stretch element"                    (both performance-based)
+    "Core award" + "Strategic Stretch award"              (both performance-based)
+    Restricted Share Plan + "Stretch Performance Incentive Plan"
+    Performance Share Plan + "Co-Investment Plan" matching shares
+    Performance Share Plan + Restricted Share Plan        (the classic hybrid)
+    Performance shares + share options (e.g. a SESOP element)
+Do NOT skip the split just because neither vehicle is a restricted/time-based award.
+The test is simply: does this executive receive two separately-sized LTIP awards in
+the same year? If yes, record both maxima.
+
+- psp_max_percentage: the maximum for the PRIMARY vehicle as % of salary — normally the
+  larger, performance-conditioned award (Performance Share Plan, "Core" award, the main LTIP).
+- rsp_max_percentage: the maximum for the SECOND, smaller vehicle granted alongside it, as %
+  of salary — whatever it is called ("Exceptional", "Stretch", restricted shares, matching
+  shares, share options). IMPORTANT: set this whenever the report states a maximum for the
+  second vehicle, EVEN IF the company says it does not currently intend to use it (e.g. "the
   ability to grant Restricted Shares would remain, although not anticipated to be used") — a
-  dormant/unused provision still has a real stated maximum and must be captured. Only leave both
-  psp_max_percentage and rsp_max_percentage blank when there is no restricted-element provision
-  in the policy at all.
-- rsp_status: state "active" if the restricted element is actually being granted (current or
+  dormant/unused provision still has a real stated maximum and must be captured. Leave both
+  blank only when the executive genuinely receives a single LTIP vehicle.
+- rsp_status: state "active" if the second vehicle is actually being granted (current or
   recent awards exist), or "provision_unused" if the policy permits it but the company states no
   current intention to grant it / no such award has been made. Only relevant when
   rsp_max_percentage is set.
@@ -526,10 +541,14 @@ FIELD DEFINITIONS:
 
 Look for sections covering "Implementation of Policy", "Remuneration Policy", "Base salary",
 "Annual bonus", "LTIP opportunity", "Bonus deferral" and "Shareholding guidelines".
-The key details may be contained in policy tables or narrative descriptions. Hybrid LTIP splits
-are often stated per-executive in an "Implementation" table (e.g. "Jonny will be granted a
+The key details may be contained in policy tables or narrative descriptions. Two-vehicle LTIP
+splits are often stated per-executive in an "Implementation" table (e.g. "Jonny will be granted a
 Performance Share Award (PSA) of 425% of salary and a Restricted Share Award (RSA) of 100% of
-salary").
+salary"), or in a maximum-opportunity table with one column per vehicle (e.g. a row reading
+"CEO | 250% | 150%" under headings for a core and a stretch element), or in the award-level
+narrative ("Exceptional Performance LTIP award — opportunity at 100 per cent of salary for the
+Chief Executive Officer and 50 per cent of salary for other Executive Directors"). Read the
+column headings and surrounding narrative to work out which vehicle each figure belongs to.
 
 {context}
 ---
@@ -543,7 +562,7 @@ Provide the answer in the following format for EACH Executive Director:
   - **Annual Bonus Opportunity:** [Maximum % of base salary]
   - **Bonus Deferral:** [% of bonus deferred, for how many years]
   - **LTIP Opportunity:** [Maximum % of base salary]
-  - **LTIP Split (only if a restricted-element provision exists):** [Performance element % of salary] + [Restricted element % of salary] — [Mechanism: additive/substitutive] — [Status: active/provision_unused] — omit this whole line if there is no restricted-element provision at all
+  - **LTIP Split (whenever the executive receives TWO LTIP vehicles in the same year, whatever they are called — Core/Exceptional, core/stretch, PSP/RSP, PSP/Co-Investment, shares/options):** [Primary vehicle name and % of salary] + [Second vehicle name and % of salary] — [Mechanism: additive/substitutive] — [Status: active/provision_unused] — omit this line ONLY when the executive genuinely receives a single LTIP vehicle
   - **Shareholding Guideline:** [% of base salary required]
   - **Post-Employment Shareholding:** [Years]
   - **Policy Changes:** [Summary of any changes, or "No changes" if none]
@@ -729,8 +748,12 @@ FIELD MAPPINGS:
   of performance + restricted elements; for a SUBSTITUTIVE hybrid this is the performance-only
   maximum (NOT the sum) — copy exactly what the text analysis states.
 - psp_max_percentage / rsp_max_percentage → numbers, from the "LTIP Split" line if present.
-  Copy rsp_max_percentage even when Status is "provision_unused" — a dormant maximum is still a
-  real number to capture. Leave both null when the text analysis has no LTIP Split line at all.
+  psp_max_percentage is the PRIMARY (usually larger) vehicle's maximum; rsp_max_percentage is
+  the SECOND vehicle's maximum, whatever that vehicle is called — "Exceptional", "stretch",
+  restricted shares, matching shares or share options all belong here. Do NOT require the second
+  vehicle to be a restricted-share plan. Copy rsp_max_percentage even when Status is
+  "provision_unused" — a dormant maximum is still a real number to capture. Leave both null only
+  when the text analysis has no LTIP Split line at all.
 - rsp_status → "active" or "provision_unused", copied from the LTIP Split line's Status.
 - ltip_hybrid_mechanism → "additive" or "substitutive", copied from the LTIP Split line's
   Mechanism.

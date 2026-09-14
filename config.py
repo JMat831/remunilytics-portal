@@ -284,6 +284,23 @@ Provide the answer in the following format:
   - **Grant Timing Note:** [only if Grant Date is "not stated" AND the report gives an
     event-relative timing instead, e.g. "following the conclusion of the 2026 AGM" — omit
     this line entirely otherwise]
+  - **Plan Relationship:** [ONLY when this company grants more than one LTIP plan in this year.
+    State how THIS plan relates to the other(s), using one of these labels, followed by the
+    report's own wording as evidence:
+      primary               — the company's main, recurring LTIP vehicle
+      additive_secondary    — a second vehicle granted ALONGSIDE the primary one, every year,
+                              both counting toward one blended award (e.g. a Core award plus an
+                              Exceptional/stretch award, or a PSP plus a Restricted Share Plan)
+      one_off_supplementary — a non-recurring extra: a recruitment buy-out, a catch-up award
+                              after a reappointment, or an enhanced/exceptional award the report
+                              says will not repeat ("one-off in nature", "the only award that
+                              will be granted under this plan", "additional LTIP award")
+      superseding           — a new vehicle REPLACING an older one going forward
+                              ("transitioning from RSP to PSP", "the restricted share plan will
+                              be replaced with a performance share plan")
+      superseded            — the older vehicle being replaced, with no further awards expected
+    Choose based on what the report actually says, not on the plan's name. Omit this line
+    entirely when the company grants only one LTIP plan in the year.]
   - **Performance Period (no. of years):** [If specified (usually 3 years for most LTIPs)]
   - **Metrics:**
     - Metric 1: [Description, Weight, Threshold, Target, Stretch and Exceptional target (if applicable), Additional Condition (e.g. underpin/modifier) if applicable, Measurement Method, Source Chunk: n]
@@ -658,6 +675,13 @@ GRANT DATE:
   relative phrase given", "not further specified") rather than a positive statement of timing,
   leave "grant_timing_note" null instead of copying it — that content does not belong in either
   field.
+
+PLAN RELATIONSHIP:
+- If the plan has a "Plan Relationship:" line, copy its label into "plan_relationship"
+  (one of: primary, additive_secondary, one_off_supplementary, superseding, superseded) and the
+  supporting quotation into "plan_relationship_evidence".
+- Leave both null when the line is absent — it is only stated when a company runs more than one
+  LTIP plan in a year. Never infer a relationship the text analysis did not state.
 
 SOURCE ATTRIBUTION:
 - Each metric in the text analysis is tagged with a "Source Chunk: n". Copy that integer into

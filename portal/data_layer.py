@@ -542,6 +542,39 @@ def prefer_forward_looking_grant(df: pd.DataFrame) -> pd.DataFrame:
 
 _TRANSITION_RE = re.compile(r"transitioning from\s+(\w+)\s+to\s+(\w+)", re.IGNORECASE)
 
+# Plan relationships that are NOT part of a company's standing, repeatable LTIP
+# design, and so don't belong in a peer-benchmarking view of it.
+_NON_STANDING_RELATIONSHIPS = {"one_off_supplementary", "superseded"}
+
+
+def exclude_non_standing_plans(df: pd.DataFrame) -> pd.DataFrame:
+    """Drop plans the report itself says aren't part of the ongoing LTIP design.
+
+    Uses `plan_relationship`, stated by the AR and captured at extraction time,
+    rather than inferring the same thing from plan_name wording. It replaces
+    three separate text heuristics that each guessed at one flavour of this:
+    a buy-out regex, a "catch-up award" regex, and a "transitioning from X to Y"
+    regex. Those only ever worked because the model happened to smuggle the
+    reason into the plan's NAME — the moment it stopped doing so (once there was
+    a proper field to put it in), Pets At Home's chart jumped straight back to
+    200%, which is what prompted this.
+
+    `one_off_supplementary` covers recruitment buy-outs, catch-up awards after a
+    reappointment, and enhanced/exceptional awards a report says won't repeat.
+    `superseded` is the outgoing half of a vehicle replacement. Kept: `primary`,
+    `additive_secondary` (both halves of a genuine hybrid) and `superseding`
+    (the incoming design). Rows with no `plan_relationship` are untouched, so
+    companies not yet re-extracted keep relying on the older regex filters.
+    """
+    if df.empty or "plan_relationship" not in df.columns:
+        return df
+    drop = df["plan_relationship"].isin(_NON_STANDING_RELATIONSHIPS)
+    # Never strip a company back to nothing: if every plan it has is flagged
+    # non-standing, showing the award it actually received beats showing none.
+    keep_any = df[~drop].groupby("company_name")["plan_name"].nunique()
+    safe = drop & df["company_name"].map(keep_any).fillna(0).gt(0)
+    return df[~safe]
+
 
 def prefer_replacement_plan(df: pd.DataFrame) -> pd.DataFrame:
     """When a plan_name explicitly says it's a transition from one vehicle

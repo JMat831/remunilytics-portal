@@ -20,7 +20,8 @@ from data_layer import (
     scope, latest_grant_year, latest_per_company, provenance_summary,
     dedupe_duplicate_plans, exclude_deferred_bonus_plans,
     exclude_buyout_replacement_awards, exclude_other_executive_only_awards,
-    prefer_forward_looking_grant, prefer_replacement_plan, parse_fiscal_year, prefer_latest_ar_vintage,
+    prefer_forward_looking_grant, prefer_replacement_plan, exclude_non_standing_plans,
+    parse_fiscal_year, prefer_latest_ar_vintage,
     ceo_rows,
     extract_underpin_note,
     apply_ltip_quantum_weighting, apply_plan_name_quantum_weighting, TIER_LABEL,
@@ -245,6 +246,10 @@ ltip_latest = prefer_forward_looking_grant(ltip_latest)
 # (e.g. RSP replaced by PSP) is a full replacement, not a hybrid -- drop
 # the vehicle being replaced.
 ltip_latest = prefer_replacement_plan(ltip_latest)
+# Where the report itself states a plan isn't part of the standing design
+# (a one-off/buy-out/catch-up award, or a superseded vehicle), trust that
+# over the older plan_name text heuristics.
+ltip_latest = exclude_non_standing_plans(ltip_latest)
 # Some ARs describe one grant twice (a policy table AND a granted-awards
 # table), producing two near-identically-worded plans with the same metrics
 # and weights. Left in, this silently doubles weight-sum totals — dedupe once

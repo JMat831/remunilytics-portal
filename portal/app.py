@@ -21,6 +21,7 @@ from data_layer import (
     dedupe_duplicate_plans, exclude_deferred_bonus_plans,
     exclude_buyout_replacement_awards, exclude_other_executive_only_awards,
     prefer_forward_looking_grant, prefer_replacement_plan, exclude_non_standing_plans,
+    standing_ltip_view,
     parse_fiscal_year, prefer_latest_ar_vintage,
     ceo_rows,
     extract_underpin_note,
@@ -225,36 +226,11 @@ pol_latest = latest_per_company(pol_all, "financial_year")
 own_year = latest_grant_year(ltip_all, COMPANY)
 # latest_per_company also breaks ties when the same grant_year is described
 # across multiple AR vintages (see its docstring) — no separate call needed.
-ltip_latest = latest_per_company(ltip_all, "grant_year")
-# Defensive filters for known upstream extraction gaps that predate their
-# fixes in existing (not-yet-re-extracted) data:
-ltip_latest = exclude_deferred_bonus_plans(ltip_latest)  # DABP is STIP, not LTIP
-# A recruitment buy-out/replacement award mirrors a PREVIOUS employer's plan
-# terms for one named individual — not this company's own LTIP design.
-ltip_latest = exclude_buyout_replacement_awards(ltip_latest)
-# A plan explicitly scoped to a role other than the Group CEO (CFO-only, or
-# a different Policy'd individual entirely, e.g. a US-subsidiary head)
-# isn't part of the CEO's own LTIP design -- pooling it in silently
-# contradicts every other CEO-anchored figure elsewhere in this portal.
-ltip_latest = exclude_other_executive_only_awards(ltip_latest, pol_latest)
-# The same nominal grant_year can hold both an already-completed grant AND
-# a forward announcement for the NEXT performance cycle (same metric
-# design, different target years) -- sequential, not simultaneous, so
-# stacking them doubles the chart.
-ltip_latest = prefer_forward_looking_grant(ltip_latest)
-# A plan explicitly described as transitioning from one vehicle to another
-# (e.g. RSP replaced by PSP) is a full replacement, not a hybrid -- drop
-# the vehicle being replaced.
-ltip_latest = prefer_replacement_plan(ltip_latest)
-# Where the report itself states a plan isn't part of the standing design
-# (a one-off/buy-out/catch-up award, or a superseded vehicle), trust that
-# over the older plan_name text heuristics.
-ltip_latest = exclude_non_standing_plans(ltip_latest)
-# Some ARs describe one grant twice (a policy table AND a granted-awards
-# table), producing two near-identically-worded plans with the same metrics
-# and weights. Left in, this silently doubles weight-sum totals — dedupe once
-# here so every view downstream (cards, counts, the mix chart) is protected.
-ltip_latest = dedupe_duplicate_plans(ltip_latest)
+# The single definition of a company's standing LTIP design — see
+# standing_ltip_view(); previously assembled inline here and
+# separately in the rebuild check, which drifted twice.
+ltip_latest = standing_ltip_view(ltip_all, pol_latest)
+
 ltip_own = ltip_latest[ltip_latest["company_name"] == COMPANY]
 ltip_primary = ltip_own[ltip_own.get("is_sub_metric", pd.Series(False, index=ltip_own.index)).fillna(False) == False] \
     if "is_sub_metric" in ltip_own.columns else ltip_own

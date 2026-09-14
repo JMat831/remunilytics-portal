@@ -556,6 +556,21 @@ the same year? If yes, record both maxima.
   table row these figures came from. Always cite a chunk number that actually appears in the
   context above — never invent one.
 
+PER-FIELD SOURCE CHUNKS — CITE EACH FIGURE WHERE IT ACTUALLY APPEARS:
+An executive's figures are usually spread across SEVERAL tables on DIFFERENT pages: salary in a
+salary table, the bonus maximum in a policy table, the LTIP maximum somewhere else again. A
+single chunk for the whole executive therefore mis-states where most of the numbers came from.
+Measured across the current dataset, only 21% of policy rows have a cited chunk that actually
+contains all of that row's figures.
+- Add "(Source Chunk: n)" to the Base Salary, Annual Bonus Opportunity, LTIP Opportunity and
+  Shareholding Guideline lines individually, each naming the chunk THAT figure was read from.
+  They will often differ from each other — that is expected and correct.
+- If a figure is DERIVED rather than read directly (e.g. a blended maximum you calculated by
+  adding two vehicles together), write "(Source Chunk: derived)" instead of naming a chunk.
+  Never attach a chunk that does not itself contain the number.
+- Keep the executive-level "Source Chunk:" line as well, naming the chunk that best identifies
+  the executive and their role.
+
 Look for sections covering "Implementation of Policy", "Remuneration Policy", "Base salary",
 "Annual bonus", "LTIP opportunity", "Bonus deferral" and "Shareholding guidelines".
 The key details may be contained in policy tables or narrative descriptions. Two-vehicle LTIP
@@ -575,12 +590,12 @@ Provide the answer in the following format for EACH Executive Director:
 - **Executive Director:** [FULL NAME - not title]
   - **Position:** [Title, e.g., Chief Executive Officer]
   - **Financial Year:** [Year the policy applies to]
-  - **Base Salary:** [Amount and currency, with effective date if mentioned]
-  - **Annual Bonus Opportunity:** [Maximum % of base salary]
+  - **Base Salary:** [Amount and currency, with effective date if mentioned] (Source Chunk: n)
+  - **Annual Bonus Opportunity:** [Maximum % of base salary] (Source Chunk: n)
   - **Bonus Deferral:** [% of bonus deferred, for how many years]
-  - **LTIP Opportunity:** [Maximum % of base salary]
+  - **LTIP Opportunity:** [Maximum % of base salary] (Source Chunk: n)
   - **LTIP Split (whenever the executive receives TWO LTIP vehicles in the same year, whatever they are called — Core/Exceptional, core/stretch, PSP/RSP, PSP/Co-Investment, shares/options):** [Primary vehicle name and % of salary] + [Second vehicle name and % of salary] — [Mechanism: additive/substitutive] — [Status: active/provision_unused] — omit this line ONLY when the executive genuinely receives a single LTIP vehicle
-  - **Shareholding Guideline:** [% of base salary required]
+  - **Shareholding Guideline:** [% of base salary required] (Source Chunk: n)
   - **Post-Employment Shareholding:** [Years]
   - **Policy Changes:** [Summary of any changes, or "No changes" if none]
   - **Source Chunk:** [n]
@@ -783,7 +798,13 @@ FIELD MAPPINGS:
   Mechanism.
 - shareholding_guideline_percentage → number (e.g., 400 for 400%)
 - post_employment_shareholding_years → number (e.g., 2)
-- source_chunk_id → the integer from the "Source Chunk" line for that executive
+- source_chunk_id → the integer from the executive-level "Source Chunk" line
+- base_salary_source_chunk_id / annual_bonus_max_source_chunk_id /
+  ltip_max_source_chunk_id / shareholding_guideline_source_chunk_id → the integer from that
+  specific line's "(Source Chunk: n)". These will often differ from each other and from the
+  executive-level chunk — copy each exactly as given, do NOT fall back to the executive-level
+  chunk to fill a gap. Where the line says "(Source Chunk: derived)", write the string
+  "derived". Leave null when the line gives no chunk.
 
 Schema: {schema}
 

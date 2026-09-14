@@ -638,6 +638,26 @@ def prefer_latest_ar_vintage(df: pd.DataFrame, year_col: str = "grant_year") -> 
     return df[df["file_name"] == latest_file]
 
 
+def standing_ltip_view(ltip_df: pd.DataFrame, pol_latest: pd.DataFrame) -> pd.DataFrame:
+    """The filter chain that turns raw LTIP rows into a company's STANDING design.
+
+    Defined once, here, because it has now drifted twice: first when
+    `check_multiplan_policy_coverage` reimplemented it and flagged seven
+    already-handled companies, then again when `exclude_non_standing_plans` was
+    added to the portal but not to that check, which promptly mis-flagged Pets
+    At Home. Anything that wants "the plans a company actually runs" should call
+    this rather than assembling its own sequence.
+    """
+    out = latest_per_company(ltip_df, "grant_year")
+    out = exclude_deferred_bonus_plans(out)          # a deferred bonus is STIP
+    out = exclude_buyout_replacement_awards(out)     # buy-outs / catch-up awards
+    out = exclude_other_executive_only_awards(out, pol_latest)   # not the CEO's
+    out = prefer_forward_looking_grant(out)          # same design disclosed twice
+    out = prefer_replacement_plan(out)               # superseded vehicle, by name
+    out = exclude_non_standing_plans(out)            # ...and by stated relationship
+    return dedupe_duplicate_plans(out)
+
+
 def ceo_rows(df: pd.DataFrame) -> pd.DataFrame:
     """The sitting Group CEO's row(s) per company.
 

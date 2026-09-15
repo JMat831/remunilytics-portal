@@ -632,14 +632,34 @@ with T["Policy"]:
         for _, r in p_own.iterrows():
             t = r.get("source_attribution_tier")
             t = int(t) if pd.notna(t) else None
+            # Each figure carries its OWN page reference where the extraction
+            # recorded one. A single card-level citation used to stand behind
+            # all of them, but these figures usually come from different tables
+            # on different pages — measured across the dataset, only 21% of
+            # rows had a cited chunk containing every figure on that row. Falls
+            # back silently to the card-level citation for companies not yet
+            # re-extracted, so nothing regresses in the meantime.
+            def _figure(label, value, field):
+                txt = f'{label} <b>{fmt_pct(value)}</b>'
+                raw = r.get(f"{field}_source_link")
+                if isinstance(raw, str) and raw.strip().lower() == "derived":
+                    # A calculated figure has no page to point at — say so
+                    # rather than borrowing a plausible-looking one.
+                    return txt + ' <span style="opacity:.65">(derived)</span>'
+                url, lbl = parse_source_link(raw) if isinstance(raw, str) else (None, None)
+                if url:
+                    return (txt + f' <a href="{url}" target="_blank" '
+                                  f'style="opacity:.75;text-decoration:none">{lbl}↗</a>')
+                return txt
+
             st.markdown(
                 f'<div class="rl-card" style="margin-bottom:.55rem">'
                 f'<div style="font-weight:700;font-size:1rem;color:#22303F">'
                 f'{r.get("executive_name")} — {r.get("position")}</div>'
                 f'<div class="rl-note">'
-                f'Bonus max <b>{fmt_pct(r.get("annual_bonus_max_percentage"))}</b> &nbsp;·&nbsp; '
-                f'LTIP max <b>{fmt_pct(r.get("ltip_max_percentage"))}</b> &nbsp;·&nbsp; '
-                f'Shareholding <b>{fmt_pct(r.get("shareholding_guideline_percentage"))}</b></div>'
+                f'{_figure("Bonus max", r.get("annual_bonus_max_percentage"), "annual_bonus_max")} &nbsp;·&nbsp; '
+                f'{_figure("LTIP max", r.get("ltip_max_percentage"), "ltip_max")} &nbsp;·&nbsp; '
+                f'{_figure("Shareholding", r.get("shareholding_guideline_percentage"), "shareholding_guideline")}</div>'
                 f'<div style="margin-top:.45rem">{tier_pill(t)} &nbsp; {src_link(r.get("source_link"))}</div>'
                 f'</div>', unsafe_allow_html=True)
             source_view(r, "policy")

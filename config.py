@@ -19,6 +19,15 @@ LLM_MODELS = {
     }
 }
 
+# PDF parser used for Stage 1 chunking:
+#   "dpt2" -- Landing AI Parse Gen1 (api.va.landing.ai/v1/ade/parse), the long-standing default
+#   "dpt3" -- Landing AI ADE Gen2 (/v2/parse) via the landingai_ade SDK; cheaper per page in
+#             practice and returns word-level grounding. Chunk output is identical in shape.
+# Override per run without editing this file:  PDF_PARSER=dpt3 python main_pipeline.py ...
+import os as _os
+PDF_PARSER = _os.environ.get("PDF_PARSER", "dpt2")
+DPT3_MODEL = "dpt-3-verity-latest"
+
 # ============================================================================
 # PIPELINE CONFIGURATION
 # ============================================================================

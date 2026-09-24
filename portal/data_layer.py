@@ -147,14 +147,20 @@ def load_tokens():
     """
     try:
         raw = st.secrets.get("tokens_json")
-    except Exception:
+    except Exception as e:
+        # Streamlit could not even parse the Secrets TOML. Say so in the app log:
+        # from the outside this looks identical to "this token is wrong".
+        print(f"[tokens] st.secrets could not be read: {type(e).__name__}: {str(e)[:120]}", flush=True)
         raw = None
     if raw:
         try:
             return json.loads(raw)
-        except (TypeError, ValueError):
-            pass
+        except (TypeError, ValueError) as e:
+            print(f"[tokens] tokens_json is set but is not valid JSON ({e}); "
+                  "falling back to the local file", flush=True)
     if not os.path.exists(TOKENS_JSON):
+        print("[tokens] NO tokens available: Secrets missing/unreadable and no local "
+              "tokens.json -- every link will show as invalid", flush=True)
         return {}
     with open(TOKENS_JSON, "r", encoding="utf-8") as f:
         return json.load(f)

@@ -235,6 +235,12 @@ def parse_fiscal_year(series: pd.Series) -> pd.Series:
     def parse_one(s):
         if pd.isna(s):
             return None
+        # pd.read_csv infers an all-numeric year column as float64 (2025.0)
+        # whenever it contains a blank -- str() of that ends in ".0", and
+        # "take the LAST digit group" would then read that trailing 0 as the
+        # year (-> 2000 for every row).
+        if isinstance(s, float) and s.is_integer():
+            s = int(s)
         groups = re.findall(r"\d+", str(s))
         if not groups:
             return None

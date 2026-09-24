@@ -55,7 +55,7 @@ def parse_year(val):
 
 
 
-def parse_base_year_from_method(method_text, end_year: int) -> tuple:
+def parse_base_year_from_method(method_text, end_year: int, fye_month: int = None) -> tuple:
     """Extract an explicit (base_year, n_years) from a measurement_method string.
 
     Handles patterns like:
@@ -69,6 +69,11 @@ def parse_base_year_from_method(method_text, end_year: int) -> tuple:
     Returns (base_year: int, n_years: int) or (None, None) if no pattern found.
     The returned n_years is the count of years between base and end
     (i.e. end_year - base_year), regardless of performance_period_years.
+
+    `fye_month` (1-12) is the company's actual fiscal-year-end month, sourced
+    from the master Excel's `fiscal_year_end` column. When given, the calendar
+    date-range pattern below computes the exact fiscal base year instead of
+    the Jan-Jun/Jul-Dec heuristic guess.
     """
     if not method_text or (isinstance(method_text, float) and pd.isna(method_text)):
         return None, None
@@ -120,24 +125,32 @@ def parse_base_year_from_method(method_text, end_year: int) -> tuple:
         return base, end_year - base
 
     # Pattern: calendar date range "D Month YYYY to D Month YYYY"
-    # Base = the fiscal year that ends on or before the start date.
-    # We use start_year - 1 for start months Jan-Mar (March year-end convention),
-    # start_year otherwise — but since we don't have the FY end month here, use
-    # a simpler rule: base = the 4-digit year in the start date minus 1 if start
-    # month is Jan-Jun, else the start year itself.
-    # This is intentionally conservative; the fiscal_year_end_month enhancement
-    # (planned) will make it exact.
+    # Base = the fiscal year immediately before the one in which the period
+    # starts. A date falls in the fiscal year ending in its own calendar year
+    # when its month is <= the company's FYE month, otherwise the next
+    # calendar year (e.g. 1 April 2024 for a March-FYE company falls in
+    # FY2025, since FY2025 runs April 2024 - March 2025; base = FY2025 - 1 =
+    # FY2024). When fye_month is unknown, fall back to the old Jan-Jun/Jul-Dec
+    # heuristic guess (kept only for companies missing the master Excel's
+    # fiscal_year_end value).
     MONTHS = {'january':1,'february':2,'march':3,'april':4,'may':5,'june':6,
               'july':7,'august':8,'september':9,'october':10,'november':11,'december':12}
+    _DATE = r'\d{1,2}\s+(january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{4}'
+    # Require an explicit "X to Y" range, not just any date mention — a phrase
+    # like "period assessed over 3 years ending 31 December 2026" contains a
+    # single (end) date with no "to", and mistaking it for a start date would
+    # derive a base year from the wrong end of the period entirely.
     m = re.search(
-        r'\b(\d{1,2})\s+(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{4})\b',
+        rf'\b(\d{{1,2}})\s+({"|".join(MONTHS)})\s+(\d{{4}})\s+to\s+{_DATE}\b',
         s, re.IGNORECASE)
     if m:
         start_month = MONTHS[m.group(2).lower()]
         start_year  = int(m.group(3))
-        # If performance starts in Jan-Jun, the base fiscal year typically ended
-        # in the prior calendar year (e.g. April start → base = year ending March before)
-        base = start_year - 1 if start_month <= 6 else start_year
+        if fye_month:
+            period_start_fy = start_year if start_month <= fye_month else start_year + 1
+            base = period_start_fy - 1
+        else:
+            base = start_year - 1 if start_month <= 6 else start_year
         return base, end_year - base
 
     return None, None
@@ -146,6 +159,20 @@ def parse_base_year_from_method(method_text, end_year: int) -> tuple:
 LTIP_PATH      = os.path.join(paths["dataframes_path"], "all_companies_ltip.csv")
 CONSENSUS_PATH = os.path.join(paths["dataframes_path"], "all_companies_consensus_long.csv")
 OUTPUT_PATH    = os.path.join(paths["dataframes_path"], "all_companies_ltip_with_consensus.csv")
+MASTER_EXCEL_PATH = os.path.join(paths["base_path"], "ftse_350_companies_and_ar_links.xlsx")
+
+
+def load_fye_month_by_ticker() -> dict:
+    """Map ticker_bb -> fiscal_year_end month (1-12) from the master Excel's
+    `fiscal_year_end` column. Returns {} if the file or column is missing, so
+    callers degrade gracefully to the old heuristic rather than failing."""
+    if not os.path.exists(MASTER_EXCEL_PATH):
+        return {}
+    master = pd.read_excel(MASTER_EXCEL_PATH)
+    if "fiscal_year_end" not in master.columns or "ticker_bb" not in master.columns:
+        return {}
+    master = master.dropna(subset=["ticker_bb", "fiscal_year_end"])
+    return dict(zip(master["ticker_bb"], master["fiscal_year_end"].astype(int)))
 
 
 # ────────────────────────────────────────────────────────────────────────────────
@@ -446,6 +473,12 @@ def main():
 
     print(f"Loaded {len(ltip)} LTIP rows and {len(con)} annual consensus rows")
 
+    fye_by_ticker = load_fye_month_by_ticker()
+    if fye_by_ticker:
+        print(f"Loaded fiscal_year_end for {len(fye_by_ticker)} companies from master Excel")
+    else:
+        print("  [!] No fiscal_year_end data found in master Excel — using Jan-Jun/Jul-Dec heuristic fallback")
+
     # Output columns
     out_cols = {
         "canonical_metric": [],
@@ -567,7 +600,8 @@ def main():
                     # Try to extract an explicit base year from the measurement
                     # method text (e.g. "from FY 2023/24 to FY 2026/27").
                     # Fall back to the formula end_year - period if not found.
-                    parsed_base, parsed_n = parse_base_year_from_method(method, end_year_int)
+                    fye_month = fye_by_ticker.get(ticker)
+                    parsed_base, parsed_n = parse_base_year_from_method(method, end_year_int, fye_month)
                     if parsed_base and parsed_n and parsed_n > 0:
                         base_year_int = parsed_base
                         cagr_n        = parsed_n

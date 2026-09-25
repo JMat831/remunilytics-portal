@@ -21,7 +21,7 @@ from data_layer import (
     dedupe_duplicate_plans, exclude_deferred_bonus_plans,
     exclude_buyout_replacement_awards, exclude_other_executive_only_awards,
     prefer_forward_looking_grant, prefer_replacement_plan, exclude_non_standing_plans,
-    standing_ltip_view,
+    standing_ltip_view, peers_without_weighted_metrics,
     parse_fiscal_year, prefer_latest_ar_vintage,
     ceo_rows,
     extract_underpin_note,
@@ -547,6 +547,15 @@ with T["Long-Term Incentive"]:
             if _blank_peers:
                 _caption += (f" {', '.join(sorted(_blank_peers))}: no LTIP scheme identified "
                             f"in their Annual Report — not missing data.")
+            # A peer that IS in the data but has no weighted metric (e.g. a
+            # deferred-share plan disclosed only as underpins) draws a
+            # zero-height bar and is not caught above, since it does have rows.
+            _unweighted_peers = [n for n in peers_without_weighted_metrics(mix, COMPANY)
+                                 if n not in _blank_peers]
+            if _unweighted_peers:
+                _caption += (f" {', '.join(_unweighted_peers)}: no weighted performance metrics "
+                            f"disclosed (for example a deferred-share plan governed only by "
+                            f"underpins) — not missing data.")
             st.caption(_caption)
 
 # ══════════════════════════════════════════════════════════════════════════════

@@ -150,7 +150,9 @@ def load_tokens():
     except Exception as e:
         # Streamlit could not even parse the Secrets TOML. Say so in the app log:
         # from the outside this looks identical to "this token is wrong".
-        print(f"[tokens] st.secrets could not be read: {type(e).__name__}: {str(e)[:120]}", flush=True)
+        # ("no secrets file" is the normal state in local dev, so stay quiet for that.)
+        if type(e).__name__ != "StreamlitSecretNotFoundError":
+            print(f"[tokens] st.secrets could not be read: {type(e).__name__}: {str(e)[:120]}", flush=True)
         raw = None
     if raw:
         try:
@@ -164,6 +166,19 @@ def load_tokens():
         return {}
     with open(TOKENS_JSON, "r", encoding="utf-8") as f:
         return json.load(f)
+
+
+def peers_without_weighted_metrics(mix: pd.DataFrame, own_label: str) -> list:
+    """Display names (excluding the company's own) that appear in the chart data
+    but have no weighted performance metric at all -- e.g. a deferred-share
+    plan disclosed only as underpins, every weight blank. Such a peer draws a
+    zero-height bar, and unlike a peer with NO rows it is not caught by the
+    'not in mix' check, so it was silently blank with no explanation."""
+    if mix is None or mix.empty or "display_name" not in mix.columns:
+        return []
+    totals = mix.groupby("display_name")["weight_percentage"].sum(min_count=1)
+    return sorted(n for n in totals.index
+                  if n != own_label and (pd.isna(totals[n]) or totals[n] <= 0))
 
 
 def resolve_token(token: str):

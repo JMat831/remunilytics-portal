@@ -23,8 +23,9 @@ from data_layer import (
     prefer_forward_looking_grant, prefer_replacement_plan, exclude_non_standing_plans,
     standing_ltip_view, peers_without_weighted_metrics,
     parse_fiscal_year, prefer_latest_ar_vintage,
-    ceo_rows,
-    extract_underpin_note,
+    ceo_rows, ceo_opportunity, peer_ceo_values, fiscal_year_label,
+    stip_view, stip_chart_rows, stip_weight_totals,
+    extract_underpin_note, parse_source_link as _psl,
     apply_ltip_quantum_weighting, apply_plan_name_quantum_weighting, TIER_LABEL,
 )
 from source_render import has_box, render_citation
@@ -75,7 +76,9 @@ ACCENT = "#C55A11"
 def card(title, big, note="", flag=False):
     cls = "rl-card rl-flag" if flag else "rl-card"
     st.markdown(
-        f'<div class="{cls}"><h4>{title}</h4>'
+        # min-height keeps a row of KPI cards level when a title AND a note each
+        # wrap to 2 lines (five cards across at desktop width)
+        f'<div class="{cls}" style="min-height:10.9rem"><h4>{title}</h4>'
         f'<div class="rl-big">{big}</div>'
         f'<div class="rl-note">{note}</div></div>',
         unsafe_allow_html=True,
@@ -138,10 +141,15 @@ def fmt_pct(v, dp=0):
 
 
 def pctile(value, arr):
+    """Mid-rank percentile: peers below count fully, peers LEVEL count half.
+    Opportunity maxima cluster on round numbers (200% of salary is common), so
+    counting only peers strictly below put a company level with most of its peers
+    at the "0th percentile" -- read as "lowest", when it is in the middle of the pack."""
     arr = np.asarray([a for a in arr if pd.notna(a)], dtype=float)
     if len(arr) == 0 or pd.isna(value):
         return None
-    return round(100.0 * (arr < float(value)).sum() / len(arr))
+    v = float(value)
+    return round(100.0 * ((arr < v).sum() + 0.5 * (arr == v).sum()) / len(arr))
 
 
 def ordinal(n):
@@ -163,7 +171,69 @@ def canonical_label(m):
         "net_interest_income": "Net Interest Income", "other": "Other",
         "restricted_time_based": "Restricted (time-based)",
         "value_creation_plan": "Value Creation Plan (VCP)",
+        # bonus-scorecard categories (see classify_stip_metric)
+        "personal": "Personal / individual", "operational": "Operational",
+        "risk_conduct": "Risk & conduct", "profit_other": "Profit (other measures)",
+        "financial_other": "Financial (other)", "working_capital": "Working capital / debt",
+        "undisclosed": "Not disclosed", "scorecard": "Composite scorecard",
     }.get(str(m), str(m).replace("_", " ").title())
+
+
+# One colour per category, used by BOTH metric-mix charts: a category must look
+# the same on the LTIP and bonus charts, and on every company's page (the old
+# per-page default palette assigned colours by weight order). The main ones
+# keep the colours the LTIP chart already showed.
+CANONICAL_COLOURS = {
+    "eps": "#0068C9", "tsr_relative": "#83C9FF", "esg": "#FF2B2B",
+    "return_on_capital": "#FFABAB", "tsr_absolute": "#29B09D", "strategic": "#7DEFA1",
+    "ebitda": "#FF8700", "revenue": "#FFD16A", "ebit": "#6D3FC0", "pbt": "#B28DFF",
+    "pat": "#8C564B", "profit_other": "#D9C2FF", "margin": "#E377C2",
+    "cashflow": "#00A6A6", "cash_conversion": "#7FD6D6", "working_capital": "#3E8E8E",
+    "rote": "#FF6F61", "cet1_ratio": "#A0522D", "nav_per_share": "#BCBD22",
+    "net_interest_income": "#17BECF", "value_creation_plan": "#2E8B57",
+    "personal": "#F4A261", "operational": "#9C755F", "risk_conduct": "#8E6C8A",
+    "financial_other": "#AEC7E8", "scorecard": "#98A6B8", "undisclosed": "#E3E7ED",
+    "other": "#C7CDD6", "restricted_time_based": "#8A94A6",
+}
+
+
+def opportunity_banner(field: str, what: str):
+    """One line stating the CEO's maximum opportunity (% of salary), whose it is
+    (CEO / Interim CEO / Acting CEO / Co-CEOs), which financial year's policy,
+    the percentile vs peers, and a link to the page it came from."""
+    val, rows, role = ceo_opportunity(pol_latest, COMPANY, field)
+    if role is None:
+        st.markdown(
+            f'<div class="rl-card" style="margin-bottom:.9rem"><h4>Maximum {what} opportunity</h4>'
+            f'<div class="rl-note">The latest remuneration policy on file has no Chief Executive '
+            f'role (for example, a company led by an Executive Chair).</div></div>',
+            unsafe_allow_html=True)
+        return
+    r = rows.iloc[0]
+    names = [n for n in rows["executive_name"].dropna().astype(str).unique()
+             if n and not n.lower().startswith("name not disclosed")]
+    who = f"{role} ({' and '.join(names)})" if names else role
+    yr = fiscal_year_label(r)
+    if val is None:
+        st.markdown(
+            f'<div class="rl-card" style="margin-bottom:.9rem"><h4>Maximum {what} opportunity</h4>'
+            f'<div class="rl-note">Not disclosed in the latest policy on file · {who}'
+            f'{" · " + yr if yr else ""}</div></div>', unsafe_allow_html=True)
+        return
+    p = pctile(val, peer_ceo_values(pol_latest, PEERS, field))
+    url, lbl = _psl(r.get(f"{field.replace('_percentage', '')}_source_link"))
+    if not url:
+        url, lbl = _psl(r.get("source_link"))
+    src = f' &nbsp; <span class="rl-src"><a href="{url}" target="_blank">{lbl} ↗</a></span>' if url else ""
+    pct = f" · {ordinal(p)} percentile vs peers" if p is not None else ""
+    yr_s = (f" · policy for the {yr}" if yr.startswith("financial") else
+            f" · policy for {yr}" if yr else "")
+    st.markdown(
+        f'<div class="rl-card" style="margin-bottom:.9rem"><h4>Maximum {what} opportunity</h4>'
+        f'<div style="display:flex;align-items:baseline;gap:.6rem;flex-wrap:wrap">'
+        f'<span class="rl-big">{val:.0f}%</span><span class="rl-note" style="margin:0">of base salary</span></div>'
+        f'<div class="rl-note">{who}{yr_s}{pct}{src}</div></div>',
+        unsafe_allow_html=True)
 
 
 # ── Token gate ────────────────────────────────────────────────────────────────
@@ -261,29 +331,35 @@ with T["Overview"]:
 
     own_mix = set(ltip_primary["canonical_metric"].dropna()) if "canonical_metric" in ltip_primary.columns else set()
 
-    c1, c2, c3, c4 = st.columns(4)
+    def _opportunity_card(field, title):
+        # Same executive, same one-value-per-peer rule as the tab banners and the
+        # Policy tab's charts (ceo_opportunity / peer_ceo_values), so the three
+        # places that quote this percentile can never disagree.
+        val, _, role = ceo_opportunity(pol_latest, COMPANY, field)
+        if val is None:
+            card(title, "n/a", "no CEO role in latest policy" if role is None
+                 else "not disclosed in latest policy")
+            return
+        p = pctile(val, peer_ceo_values(pol_latest, PEERS, field))
+        who = "" if role == "CEO" else f"{role} · "
+        card(title, f"{val:.0f}%",
+             f"{who}of salary · {ordinal(p)} pctile vs peers" if p is not None else f"{who}of salary")
+
+    pol_own = pol_latest[pol_latest["company_name"] == COMPANY]
+    c1, c2, c3, c4, c5 = st.columns(5)
     with c1:
         delta = "" if pd.isna(peer_med_n) else f"Peer median {peer_med_n:.0f}"
         card("LTIP metrics", f"{own_n}", delta,
              flag=(not pd.isna(peer_med_n) and own_n > peer_med_n + 1))
     with c2:
-        pol_own = pol_latest[pol_latest["company_name"] == COMPANY]
-        # Sitting group CEO only — see ceo_rows(): a raw "chief exec|CEO" text
-        # match also pulls in Deputy/Interim/Former and subsidiary chief execs.
-        ceo = ceo_rows(pol_own)
-        ltip_max = ceo["ltip_max_percentage"].dropna()
-        peers_max = ceo_rows(pol_latest[pol_latest["company_name"] != COMPANY])["ltip_max_percentage"].dropna()
-        if len(ltip_max):
-            p = pctile(ltip_max.iloc[0], peers_max.tolist())
-            card("CEO LTIP opportunity", f"{ltip_max.iloc[0]:.0f}%",
-                 f"of salary · {ordinal(p)} pctile vs peers" if p is not None else "of salary")
-        else:
-            card("CEO LTIP opportunity", "n/a", "not disclosed in latest policy")
+        _opportunity_card("ltip_max_percentage", "CEO LTIP opportunity")
     with c3:
         yrs = pd.to_numeric(ltip_primary.get("performance_period_years"), errors="coerce").dropna()
         card("Performance period (LTIP)", f"{yrs.mode().iloc[0]:.0f} yrs" if len(yrs) else "n/a",
              f"Grant year {own_year}" if own_year else "")
     with c4:
+        _opportunity_card("annual_bonus_max_percentage", "CEO STIP opportunity")
+    with c5:
         prov = provenance_summary([ltip_own, stip_all[stip_all.company_name == COMPANY],
                                    pol_own, pay_latest[pay_latest.company_name == COMPANY]])
         exact = prov.get(3, 0)
@@ -352,6 +428,7 @@ with T["Overview"]:
 # LTIP
 # ══════════════════════════════════════════════════════════════════════════════
 with T["Long-Term Incentive"]:
+    opportunity_banner("ltip_max_percentage", "LTIP")
     if ltip_own.empty:
         st.info("No LTIP data on file for this company.")
     else:
@@ -509,9 +586,7 @@ with T["Long-Term Incentive"]:
                     x=sub["display_name"], y=sub["weight_percentage"],
                     name=canonical_label(m),
                     marker_line_width=0,
-                    marker_color=("#C7CDD6" if m == "other"
-                                 else "#8A94A6" if m == "restricted_time_based"
-                                 else None),
+                    marker_color=CANONICAL_COLOURS.get(m),
                 )
             order = [COMPANY] + [alias[p] for p in sorted(PEERS) if p in alias]
             fig.update_layout(
@@ -561,25 +636,50 @@ with T["Long-Term Incentive"]:
 # ══════════════════════════════════════════════════════════════════════════════
 # ANNUAL BONUS
 # ══════════════════════════════════════════════════════════════════════════════
+def _fmt_weight(wt):
+    if pd.isna(wt):
+        return "—"
+    return f"{wt:.0f}%" if abs(wt - round(wt)) < 0.05 else f"{wt:.1f}%"
+
+
+def _names(display_names):
+    return ", ".join(sorted(display_names, key=lambda n: (n != COMPANY, n)))
+
+
 with T["Annual Bonus"]:
-    s_own = stip_all[stip_all["company_name"] == COMPANY].copy()
+    opportunity_banner("annual_bonus_max_percentage", "annual bonus")
+    # stip_view: the single definition of a company's bonus metrics (one AR
+    # vintage per year, label/outcome rows removed, an explicit 0% read as "not
+    # separately weighted", % of salary rescaled to share of the bonus). The
+    # rebuild check reads the same view, so what it flags is what is shown here.
+    stip_v = stip_view(stip_all, pol_latest)
+    s_own = stip_v[stip_v["company_name"] == COMPANY] if not stip_v.empty else stip_v
     if s_own.empty:
         st.info("No annual bonus data on file for this company.")
     else:
-        s_own["_yr"] = parse_fiscal_year(s_own["financial_year"])
-        # Same AR-vintage duplication risk as LTIP (see prefer_latest_ar_vintage
-        # docstring) -- group on the already-parsed numeric year, not the raw
-        # text label, since "FY9" vs "FY10" would sort wrong lexically.
-        s_own = prefer_latest_ar_vintage(s_own, year_col="_yr")
         years = sorted(s_own["_yr"].dropna().unique(), reverse=True)
-        yr = st.selectbox("Financial year", years, format_func=lambda y: f"FY{int(y)}")
+        _fye = pd.to_numeric(s_own.get("financial_year_end_month"), errors="coerce").dropna()
+        _fye = int(_fye.iloc[0]) if len(_fye) else None
+
+        def _year_option(y):
+            lbl = fiscal_year_label({"financial_year": int(y), "financial_year_end_month": _fye})
+            return (f"FY{int(y)} (year ending {lbl.split('ending ', 1)[1]})"
+                    if lbl.startswith("financial year ending") else f"FY{int(y)}")
+
+        yr = st.selectbox("Financial year", years, format_func=_year_option)
         d = s_own[s_own["_yr"] == yr]
         payout = d["total_bonus_payout"].dropna()
         if len(payout):
             st.markdown(f"**Overall outcome:** {payout.iloc[0]:.1f}% of maximum")
+        _basis = d["weight_basis_note"].dropna()
+        if len(_basis):
+            st.caption(_basis.iloc[0])
+        if d["weight_percentage"].notna().any():
+            st.caption("Weightings are each measure's share of the total bonus. "
+                       "\"—\" marks a measure assessed without a separate weighting.")
         for _, r in d.iterrows():
             wt = r.get("weight_percentage")
-            wt_s = f"{wt:.0f}%" if pd.notna(wt) else "—"
+            wt_s = _fmt_weight(wt)
             tgt, act = r.get("target_value"), r.get("actual_performance")
             out = r.get("actual_payout_percentage")
             bits = []
@@ -603,6 +703,100 @@ with T["Annual Bonus"]:
                 with st.expander("Committee's assessment"):
                     st.write(str(act))
 
+    # ── Metric mix vs peers (bonus) ──────────────────────────────────────────
+    st.write("")
+    st.markdown("#### Metric mix vs peers")
+    chart_src = stip_chart_rows(stip_v) if not stip_v.empty else stip_v
+    if chart_src.empty:
+        st.info("No annual bonus data on file for this company or its peers.")
+    else:
+        mix = (chart_src.dropna(subset=["weight_percentage"])
+               .groupby(["company_name", "canonical_metric"])["weight_percentage"]
+               .sum().reset_index())
+        mix = anonymise(mix, alias, COMPANY, own_label=COMPANY)
+        TAIL = ["financial_other", "scorecard", "undisclosed", "other"]
+        order_m = (mix[~mix["canonical_metric"].isin(TAIL)]
+                   .groupby("canonical_metric")["weight_percentage"]
+                   .sum().sort_values(ascending=False).index.tolist())
+        order_m += [t for t in TAIL if t in mix["canonical_metric"].values]
+        fig = go.Figure()
+        for m in order_m:
+            sub = mix[mix["canonical_metric"] == m]
+            fig.add_bar(
+                x=sub["display_name"], y=sub["weight_percentage"], name=canonical_label(m),
+                marker_line_width=0, marker_color=CANONICAL_COLOURS.get(m),
+                # "Not disclosed" is weight on measures the company does not name --
+                # hatched so it can't be read as a real category.
+                marker_pattern_shape="/" if m == "undisclosed" else None,
+                hovertemplate=f"%{{x}}<br>{canonical_label(m)}: %{{y:.0f}}%<extra></extra>",
+            )
+        order = [COMPANY] + [alias[p] for p in sorted(PEERS) if p in alias]
+        fig.update_layout(
+            barmode="stack", height=480,
+            xaxis={"categoryorder": "array", "categoryarray": order,
+                   "range": [-0.5, len(order) - 0.5]},
+            yaxis_title="Share of bonus (%)",
+            margin=dict(l=10, r=10, t=10, b=130),
+            legend=dict(orientation="h", traceorder="normal", yanchor="top", y=-0.32, x=0),
+            plot_bgcolor="white", paper_bgcolor="white",
+        )
+        fig.update_xaxes(tickangle=-30)
+        st.plotly_chart(fig, width="stretch")
+
+        # Everything that could make a bar look "peculiar" is named, so a
+        # missing or short bar never reads as a chart bug or missing data.
+        disp = lambda c: COMPANY if c == COMPANY else alias.get(c)          # noqa: E731
+        tot = stip_weight_totals(chart_src)
+        tot["disp"] = tot["company_name"].map(disp)
+        own_yr = tot.loc[tot["company_name"] == COMPANY, "_yr"]
+        notes = [("Each measure's share of the total bonus, for each company's most recent "
+                  "financial year with disclosed weightings"
+                  + (f" (yours: FY{int(own_yr.iloc[0])}; years differ because financial "
+                     f"year-ends differ)" if len(own_yr) else "")
+                  + f". Peer set: {PEER_BASIS}.")]
+        in_data = set(chart_src["company_name"])
+        no_data = [disp(c) for c in UNIVERSE if c not in in_data and disp(c)]
+        if no_data:
+            notes.append(f"{_names(no_data)}: no annual bonus disclosure on file.")
+        unweighted = tot[tot["n_weighted"] == 0]["disp"].dropna().tolist()
+        if unweighted:
+            notes.append(f"{_names(unweighted)}: measures disclosed without weightings "
+                         f"(for example withheld as commercially sensitive, or a wholly "
+                         f"discretionary bonus) — not missing data.")
+        partial = tot[(tot["n_weighted"] > 0) & (tot["total"] < 95)]
+        if len(partial):
+            notes.append(f"{_names(partial['disp'].dropna())}: weightings disclosed for only "
+                         f"part of the scorecard — the bar shows the disclosed share.")
+        over = tot[tot["total"] > 105]["disp"].dropna().tolist()
+        if over:
+            notes.append(f"{_names(over)}: disclosed weightings total more than 100% "
+                         f"(shown as reported).")
+        rescaled = chart_src[chart_src["weight_basis_note"].notna()]["company_name"].map(disp).dropna().unique().tolist()
+        if rescaled:
+            notes.append(f"{_names(rescaled)}: weightings disclosed as a % of salary, shown "
+                         f"here as a share of the bonus.")
+        if "undisclosed" in mix["canonical_metric"].values:
+            notes.append("\"Not disclosed\" (hatched) is weight attributed to measures the "
+                         "company does not name.")
+        # A bar that is mostly one broad bucket is how the company reports it,
+        # not a classification gap -- say so, rather than let it look odd.
+        share = mix.pivot_table(index="display_name", columns="canonical_metric",
+                                values="weight_percentage", aggfunc="sum").fillna(0)
+        share = share.div(share.sum(axis=1).where(lambda s: s > 0), axis=0)
+        for cat, why in [
+            ("scorecard", "most of the bonus is one or more business-unit or group "
+                          "scorecards, reported without a breakdown of their measures"),
+            ("financial_other", "most of the bonus is a financial measure described only "
+                                "in general terms (for example \"financial performance\")"),
+            ("other", "most of the bonus is on company-specific measures that fit none "
+                      "of the standard categories"),
+        ]:
+            if cat in share.columns:
+                heavy = share.index[share[cat] >= 0.5].tolist()
+                if heavy:
+                    notes.append(f"{_names(heavy)}: {why}.")
+        st.caption(" ".join(notes))
+
 # ══════════════════════════════════════════════════════════════════════════════
 # POLICY
 # ══════════════════════════════════════════════════════════════════════════════
@@ -613,17 +807,17 @@ with T["Policy"]:
     else:
         st.markdown("#### Maximum opportunity vs peers")
         st.caption("Policy maxima as a percentage of salary — structural design, not pay levels.")
-        peers_pol = pol_latest[pol_latest["company_name"] != COMPANY]
         for field, label in [("annual_bonus_max_percentage", "Annual bonus maximum"),
                              ("ltip_max_percentage", "LTIP maximum"),
                              ("shareholding_guideline_percentage", "Shareholding guideline")]:
             if field not in pol_latest.columns:
                 continue
-            own_v = ceo_rows(p_own)[field].dropna()
-            peer_v = ceo_rows(peers_pol)[field].dropna()
-            if not len(own_v) or not len(peer_v):
+            # Same executive and one-value-per-peer rule as the Overview cards and
+            # tab banners, so the percentile quoted here always matches theirs.
+            ov, _, _ = ceo_opportunity(pol_latest, COMPANY, field)
+            peer_v = pd.Series(peer_ceo_values(pol_latest, PEERS, field), dtype=float)
+            if ov is None or not len(peer_v):
                 continue
-            ov = float(own_v.iloc[0])
             fig = go.Figure()
             fig.add_box(x=peer_v.tolist(), name="Peers", marker_color=PEER,
                         boxpoints="all", jitter=.5, pointpos=0, hoverinfo="x")

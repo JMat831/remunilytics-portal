@@ -980,3 +980,247 @@ def provenance_summary(frames) -> dict:
         counts[0] += int(t.isna().sum())
     counts["total"] = counts[3] + counts[2] + counts[1] + counts[0]
     return counts
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Which executive's opportunity is "the CEO's"
+# ──────────────────────────────────────────────────────────────────────────────
+# One definition shared by the Overview cards, the tab headers and the Policy
+# tab's peer charts -- they all quote the same percentile, so they must agree
+# on whose figure it is. ceo_rows() keeps only a *current* CEO; a company run
+# for now by an interim/acting CEO (e.g. Domino's) would otherwise show nothing.
+
+_MONTHS = ["January", "February", "March", "April", "May", "June", "July",
+           "August", "September", "October", "November", "December"]
+
+
+def ceo_for_display(pol_df: pd.DataFrame, company: str):
+    """(rows, role_label) for the executive whose opportunity is shown as the
+    CEO's: the current CEO(s); else an interim/acting CEO; else a CEO designate.
+    role_label is "CEO", "Co-CEOs", "Interim CEO", "Acting CEO" or
+    "CEO designate"; (empty frame, None) when the policy has no CEO role at all
+    (e.g. a company led by an Executive Chair)."""
+    d = pol_df[pol_df["company_name"] == company] if not pol_df.empty else pol_df
+    if d.empty or "canonical_position" not in d.columns:
+        return d.iloc[0:0], None
+    ceo = d[d["canonical_position"] == "CEO"]
+    pos = lambda s: s["position"].astype(str)                     # noqa: E731
+    cur = ceo[ceo["position_status"] == "current"]
+    if len(cur):
+        if len(cur) > 1 and pos(cur).str.contains(r"\bco[- ]?(?:chief|ceo)", case=False).any():
+            return cur, "Co-CEOs"
+        return cur, "CEO"
+    interim = ceo[ceo["position_status"] == "interim"]
+    if len(interim):
+        acting = pos(interim).str.contains(r"\bacting\b", case=False).any()
+        return interim, ("Acting CEO" if acting else "Interim CEO")
+    designate = ceo[ceo["position_status"] == "designate"]
+    if len(designate):
+        return designate, "CEO designate"
+    return d.iloc[0:0], None
+
+
+def ceo_opportunity(pol_df: pd.DataFrame, company: str, field: str):
+    """The CEO opportunity figure for one company (max across co-CEO rows, which
+    in practice carry the same figure), with the rows and role label behind it."""
+    rows, label = ceo_for_display(pol_df, company)
+    vals = pd.to_numeric(rows[field], errors="coerce").dropna() if len(rows) and field in rows.columns else pd.Series(dtype=float)
+    return (float(vals.max()) if len(vals) else None), rows, label
+
+
+def peer_ceo_values(pol_df: pd.DataFrame, companies, field: str) -> list:
+    """ONE value per peer company -- a company with co-CEOs, or two CEO rows
+    mid-handover, must not count twice in a percentile."""
+    out = []
+    for c in companies:
+        v, _, _ = ceo_opportunity(pol_df, c, field)
+        if v is not None:
+            out.append(v)
+    return out
+
+
+def fiscal_year_label(row) -> str:
+    """'financial year ending March 2027' when the fiscal year-end month is
+    known (financial_year is the ENDING calendar year), else 'FY2027'."""
+    fy = parse_fiscal_year(pd.Series([row.get("financial_year")])).iloc[0]
+    if pd.isna(fy):
+        return ""
+    m = pd.to_numeric(row.get("financial_year_end_month"), errors="coerce")
+    if pd.notna(m) and 1 <= int(m) <= 12:
+        return f"financial year ending {_MONTHS[int(m) - 1]} {int(fy)}"
+    return f"FY{int(fy)}"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Annual bonus (STIP)
+# ──────────────────────────────────────────────────────────────────────────────
+# A bonus weight is each metric's share of the WHOLE bonus, so a year sums to
+# ~100% -- the same convention as the LTIP data. stip_view() is the single
+# definition of "the bonus metrics a company actually has" used by the Annual
+# Bonus tab, its metric-mix chart and the rebuild-time weight check.
+
+# Field labels and rollups the Stage 2 conversion sometimes emitted as metrics.
+# ALWAYS dropped: never a measure, only a description of the plan.
+_STIP_LABEL_RE = re.compile(
+    r"^\s*(?:additional conditions?\b|measurement method\b|total ceo bonus|"
+    r"formulaic outcome|final approved outcome|maximum bonus opportunity)"
+    r"|weighting commentary|scorecard architecture|overlay applied to", re.IGNORECASE)
+# A restatement of the whole scorecard. Dropped only when the same year also has
+# real weighted metrics -- if it is the ONLY row (metrics withheld), it is the
+# one fact we have, and is kept (it classifies as "not disclosed").
+_STIP_ROLLUP_RE = re.compile(
+    r"\bsubtotal\b|\brollup\b|\broll-up\b|^\s*overall\b.*\b(?:outcome|assessment|payout|construct|structure|result)\b",
+    re.IGNORECASE)
+
+
+def stip_view(stip_df: pd.DataFrame, pol_df: pd.DataFrame = None) -> pd.DataFrame:
+    """Cleaned bonus metrics: one AR vintage per year, label/rollup rows removed,
+    an explicit 0% weight read as 'not separately weighted' (NaN), and a
+    canonical_metric for charting. Adds `_yr`.
+
+    Safety net for one mechanical case the Stage 2 prompt now prevents at
+    source: weights copied as a % of SALARY, detectable because the year then
+    sums to exactly the CEO's bonus maximum (Barratt: 75/30/30/15 = 150 = its
+    150% maximum). Rescaled to the share of the bonus, and marked in
+    `weight_basis_note`. Deliberately narrow -- a year that is over 100% for
+    any other reason (double counting) is left alone for the rebuild check to
+    flag, because rescaling it would shrink real metrics."""
+    if stip_df is None or stip_df.empty:
+        return pd.DataFrame() if stip_df is None else stip_df
+    d = stip_df.copy()
+    d["_yr"] = parse_fiscal_year(d["financial_year"])
+    d = d.dropna(subset=["_yr"])
+    d = prefer_latest_ar_vintage(d, year_col="_yr")
+    names = d["metric_name"].astype(str)
+    d = d[~names.str.contains(_STIP_LABEL_RE)]
+    w = pd.to_numeric(d["weight_percentage"], errors="coerce")
+    d["weight_percentage"] = w.where(w != 0)
+    is_rollup = d["metric_name"].astype(str).str.contains(_STIP_ROLLUP_RE)
+    has_real = (d.assign(_real=d["weight_percentage"].notna() & ~is_rollup)
+                  .groupby(["company_name", "_yr"])["_real"].transform("any"))
+    d = d[~(is_rollup & has_real)].copy()
+    # A CEO handover year can report the same scorecard once per CEO (Coats
+    # FY2024: one plan for the former CEO, one for the new CEO, identical
+    # metrics and weights) -- summing both doubles the year to 200%. Keep one
+    # row per metric+weight, preferring the plan that is not the former CEO's.
+    # Scorecards that genuinely differ between plans are left alone.
+    plan = d["plan_name"].astype(str) if "plan_name" in d.columns else pd.Series("", index=d.index)
+    d["_former"] = plan.str.contains(r"\b(?:former|outgoing|previous|departed)\b", case=False)
+    d["_mkey"] = d["metric_name"].astype(str).str.lower().str.replace(r"\W+", " ", regex=True).str.strip()
+    d = (d.sort_values("_former", kind="stable")
+          .drop_duplicates(subset=["company_name", "_yr", "_mkey", "weight_percentage"])
+          .sort_index()
+          .drop(columns=["_former", "_mkey"]))
+    d["weight_basis_note"] = None
+    if pol_df is not None and not pol_df.empty:
+        totals = d.groupby(["company_name", "_yr"])["weight_percentage"].sum(min_count=1)
+        for (co, yr), tot in totals.items():
+            mx, _, _ = ceo_opportunity(pol_df, co, "annual_bonus_max_percentage")
+            if mx and mx != 100 and pd.notna(tot) and tot > 105 and abs(tot - mx) <= 1.5:
+                m = (d["company_name"] == co) & (d["_yr"] == yr)
+                d.loc[m, "weight_percentage"] = d.loc[m, "weight_percentage"] * 100.0 / mx
+                d.loc[m, "weight_basis_note"] = (f"Disclosed as % of salary (summing to the "
+                                                 f"{mx:.0f}% maximum); shown as share of the bonus.")
+    d["canonical_metric"] = d["metric_name"].map(classify_stip_metric)
+    return d
+
+
+def stip_weight_totals(view: pd.DataFrame) -> pd.DataFrame:
+    """Per company-year: total weight, metric count and how many carry a weight."""
+    if view.empty:
+        return pd.DataFrame(columns=["company_name", "_yr", "total", "n", "n_weighted"])
+    return (view.groupby(["company_name", "_yr"])
+                .agg(total=("weight_percentage", lambda s: s.sum(min_count=1)),
+                     n=("metric_name", "size"),
+                     n_weighted=("weight_percentage", lambda s: int(s.notna().sum())))
+                .reset_index())
+
+
+def stip_chart_rows(view: pd.DataFrame) -> pd.DataFrame:
+    """Per company, the most recent financial year that has at least one weighted
+    metric (a forward year whose weights are not yet disclosed is skipped in
+    favour of the last one that has them); a company with no weighted year at
+    all keeps its latest year so the chart can explain the gap."""
+    if view.empty:
+        return view
+    t = stip_weight_totals(view)
+    weighted = t[t["n_weighted"] > 0].groupby("company_name")["_yr"].max()
+    latest = t.groupby("company_name")["_yr"].max()
+    pick = latest.to_dict()
+    pick.update(weighted.to_dict())
+    return view[view.apply(lambda r: pick.get(r["company_name"]) == r["_yr"], axis=1)]
+
+
+# Bonus scorecards use vocabulary LTIPs rarely do. Measured on the real data,
+# the LTIP classifier alone left 23% of bonus weight unclassified. These rules
+# run BEFORE it (they must win) and AFTER it (a fallback for what it misses).
+_STIP_PRE_RULES = [
+    ("undisclosed", [r"not (yet )?disclosed", r"commercial(ly)? sensitiv",
+                     r"similar measures to", r"structure in line with",
+                     r"alternative measures", r"to be (set|determined|confirmed)",
+                     r"\btbd\b"]),
+    ("personal", [r"\bpersonal\b", r"\bindividual\b", r"role[- ]specific",
+                  r"\bown objectives\b", r"\bleadership objectives\b"]),
+    ("risk_conduct", [r"\brisk\b", r"regulat", r"\bconduct\b", r"\bcompliance\b",
+                      r"\bnpl\b", r"non[- ]performing loan"]),
+]
+_STIP_POST_RULES = [
+    # Regulated-utility environmental performance commitments (pollution,
+    # storm overflows, the Environment Agency's EPA star rating, leakage)
+    ("esg", [r"pollution", r"overflow", r"\bcsos?\b", r"sewer", r"\bepa\b",
+             r"environment agency", r"leakage", r"emission", r"carbon"]),
+    ("ebit", [r"\bebita\b", r"\baop\b", r"adjusted operating profit"]),
+    # insurers' Solvency II cash-generation measure (not an operational KPI)
+    ("cashflow", [r"surplus generation"]),
+    ("nav_per_share", [r"\bnta\b", r"net tangible assets"]),
+    ("working_capital", [r"working capital", r"work in progress", r"\bnet debt\b",
+                         r"capital generation", r"own funds generation",
+                         r"inventory", r"\bstock turn", r"loan to value", r"\bltv\b"]),
+    ("operational", [r"production", r"operational", r"\boperations\b", r"order intake",
+                     r"\binflows?\b", r"net (?:new )?flows", r"\bau[am]\b",
+                     r"efficien", r"\bdelivery\b", r"\bvolumes?\b", r"availability",
+                     r"reliab", r"\boutput\b", r"\bproject", r"programme",
+                     r"water quality", r"supply interruption", r"\boutages?\b",
+                     # commercial momentum: pipeline of future revenue
+                     r"\bbookings?\b", r"\borders\b", r"signings", r"fundraising",
+                     r"market share", r"organic growth", r"rent roll",
+                     r"\bquality\b", r"on[- ]time"]),
+    ("cashflow", [r"\bffo\b", r"funds from operations", r"\bcash\b"]),
+    ("return_on_capital", [r"economic value added", r"\beva\b", r"total (?:property )?return",
+                           r"\br(?:aoc|oac)\b", r"internal rate of return", r"\birr\b"]),
+    ("revenue", [r"\barr\b", r"recurring revenue", r"\bincome\b", r"\bngr\b",
+                 r"net gaming revenue"]),
+    ("profit_other", [r"\bprofit", r"\bearnings\b"]),
+    ("financial_other", [r"financial", r"\bcosts?\b", r"expenses", r"\bopex\b", r"budget",
+                         r"\bcir\b", r"cost[- /]income", r"dividend"]),
+    # A whole business unit's (or the group's) scorecard reported as one line,
+    # with no breakdown of what it measures -- e.g. "SWW Business Performance"
+    ("scorecard", [r"scorecard", r"\b(?:business|group|divisional|company) performance\b"]),
+    ("strategic",[r"customer", r"objectives", r"strateg", r"transformation"]),
+]
+
+
+def _match(rules, text):
+    for label, pats in rules:
+        if any(re.search(p, text) for p in pats):
+            return label
+    return None
+
+
+def classify_stip_metric(name):
+    """Canonical category for a bonus metric name (None if blank)."""
+    if not isinstance(name, str) or not name.strip():
+        return None
+    text = name.lower()
+    hit = _match(_STIP_PRE_RULES, text)
+    if hit:
+        return hit
+    try:
+        import sys
+        if BASE not in sys.path:
+            sys.path.insert(0, BASE)
+        from enrich_ltip_with_consensus import classify_ltip_metric
+        canon = classify_ltip_metric(name)[0]
+    except Exception:
+        canon = None
+    return canon or _match(_STIP_POST_RULES, text) or "other"

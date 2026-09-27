@@ -216,7 +216,9 @@ METRIC_NAME_RULES = [
     # Allow words between "profit before" and "tax" so variants like "profit
     # before exceptional items and tax" (Diageo) are caught, not just the exact
     # phrase. Safe because the EBIT rule above already took the interest case.
-    ("pbt",                 [r"\bpbt\b", r"\bpbet\b", r"profit before.*\btax\b",
+    # "tax(?:ation)?": "Profit Before Taxation" (common in bonus scorecards)
+    # failed a bare \btax\b and fell through to unclassified.
+    ("pbt",                 [r"\bpbt\b", r"\bpbet\b", r"profit before.*\btax(?:ation)?\b",
                              r"pre[- ]?tax profit"]),
     ("pat",                 [r"\bpat\b", r"profit after tax", r"net income",
                              r"net profit", r"attributable profit"]),

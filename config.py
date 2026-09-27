@@ -737,6 +737,38 @@ weight_percentage NULL — do NOT copy the category's X% onto it. Copying the sh
 onto every metric within it overstates the plan's total weight (e.g. two metrics each wrongly
 given the full 65% category weight sums to 130% instead of 65%). Only use a number for
 weight_percentage when the text analysis states that specific metric's own individual weight.
+BUT DO NOT LOSE THE CATEGORY'S WEIGHT: also emit ONE metric for the category itself, named after
+the category only plus "(combined weighting)" -- e.g. "Financial measures (combined weighting)" --
+carrying the category's X% and listing its members in assessment_summary. The members keep their
+own targets and outcomes with a null weight. The year then still adds up to 100% and nothing is
+double-counted (a real case lost 75 of 100 points by leaving every member null without this row).
+
+WEIGHT_PERCENTAGE IS EACH METRIC'S SHARE OF THE WHOLE BONUS -- A YEAR'S METRICS SUM TO ~100%:
+The same convention as the LTIP data. The metrics you emit for one financial year must add up
+to about 100%. Four things in the text analysis break that, and all four have been seen in real
+conversions -- handle each exactly as below:
+  1. WEIGHTS STATED AS A % OF SALARY. Reports often table weights against the salary-based
+     maximum ("Weight: 75% of salary (50% of maximum)", with a 150%-of-salary maximum). Use the
+     share of the MAXIMUM (50), never the salary figure (75). If only the salary figure is
+     given, divide it by that year's maximum bonus (% of salary) and multiply by 100, and note
+     the conversion in additional_conditions ("75% of salary; converted to share of the 150%
+     maximum").
+  2. A PARENT CATEGORY WITH ITS OWN WEIGHTED SUB-COMPONENTS ("Strategic objectives, total
+     weight 20%: growth 8%, Kaizen 4%, engagement 4%, emissions 4%"). Emit ONLY the
+     sub-components, which already sum to the parent -- do NOT also emit the parent. If the
+     sub-components have NO individual weights, follow the category rule above instead: the
+     parent carries the weight ("... (combined weighting)"), the sub-components a null weight.
+  3. ROLLUPS AND OUTCOMES ARE NEVER METRICS. Do not emit a metric for a subtotal, a combined
+     restatement of metrics already listed, an overall / scorecard / formulaic / final outcome,
+     or the total payout. The total payout belongs in total_bonus_payout.
+  4. FIELD LABELS ARE NEVER METRICS. Lines in the analysis such as "Additional Condition(s)",
+     "Measurement Method", "Total CEO Bonus Payout", "Formulaic Outcome", "Adjustment", "Note"
+     or "Maximum Bonus Opportunity" describe the plan -- put their content into
+     additional_conditions of the relevant metric (or leave it out), never as a metric of its own.
+A metric that is assessed but has no individual weight disclosed gets weight_percentage NULL --
+never 0 as a placeholder. Sanity-check before returning: add up weight_percentage per year. If
+it is well over 100%, you have almost certainly hit one of the four cases above -- fix it rather
+than emitting the raw figures.
 
 SOURCE ATTRIBUTION:
 - Each item in the text analysis is tagged with a "Source Chunk: n". Copy that integer into

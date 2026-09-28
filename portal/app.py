@@ -140,6 +140,20 @@ def fmt_pct(v, dp=0):
     return "n/a" if v is None or pd.isna(v) else f"{float(v):.{dp}f}%"
 
 
+def _fmt_weight(wt, max_dp=3):
+    """Format a metric weight with just enough decimal places to show it
+    exactly (up to max_dp), trimming trailing zeros -- 50 -> "50%", 20 ->
+    "20%", but a weight built from nested percentages (e.g. a sub-metric at
+    17.5% of a 12.5%-weighted category = 2.1875, shown as "2.188%") keeps the
+    precision that makes a plan's weights visibly sum to 100%, instead of
+    rounding every card to a whole number and leaving the reader unsure
+    whether the total is really 100 or the extraction just miscalculated."""
+    if pd.isna(wt):
+        return "—"
+    s = f"{float(wt):.{max_dp}f}".rstrip("0").rstrip(".")
+    return f"{s}%"
+
+
 def pctile(value, arr):
     """Mid-rank percentile: peers below count fully, peers LEVEL count half.
     Opportunity maxima cluster on round numbers (200% of salary is common), so
@@ -165,7 +179,7 @@ def canonical_label(m):
         "eps": "EPS", "revenue": "Revenue", "return_on_capital": "Return on Capital",
         "tsr_relative": "TSR (Relative)", "tsr_absolute": "TSR (Absolute)",
         "cashflow": "Cash Flow", "cash_conversion": "Cash Conversion",
-        "esg": "ESG / Sustainability", "strategic": "Strategic", "margin": "Margin",
+        "esg": "ESG / Sustainability", "strategic": "Strategic measures", "margin": "Margin",
         "ebit": "EBIT", "ebitda": "EBITDA", "pbt": "PBT", "pat": "PAT",
         "rote": "RoTE", "cet1_ratio": "CET1", "nav_per_share": "NAV/share",
         "net_interest_income": "Net Interest Income", "other": "Other",
@@ -177,6 +191,13 @@ def canonical_label(m):
         "financial_other": "Financial (other)", "working_capital": "Working capital / debt",
         "undisclosed": "Not disclosed", "scorecard": "Composite scorecard",
     }.get(str(m), str(m).replace("_", " ").title())
+
+
+def _is_are(label: str) -> str:
+    """'is' or 'are' for a canonical_label used as a sentence subject —
+    most are singular nouns/acronyms ("EPS", "Margin"), but a few are
+    plural phrases ("Strategic measures")."""
+    return "are" if label.split()[-1].lower() in ("measures", "objectives") else "is"
 
 
 # One colour per category, used by BOTH metric-mix charts: a category must look
@@ -390,12 +411,12 @@ with T["Overview"]:
                 if cnt / n_peers <= 0.25:
                     label = canonical_label(metric)
                     if metric in PLAN_TYPE_METRICS:
-                        title = f"{label} is unique to your LTIP" if cnt == 0 \
-                            else f"{label} is rare among your peers"
-                        body = ("No peers in this set use this plan type." if cnt == 0
+                        title = (f"No other plan includes a {label} element" if cnt == 0
+                                 else f"{label} is rare among your peers")
+                        body = ("This plan type is unique to your LTIP structure." if cnt == 0
                                else f"Only {cnt} of {n_peers} peers also use one.")
                     else:
-                        title = f"{label} is distinctive to your LTIP"
+                        title = f"{label} {_is_are(label)} distinctive to your LTIP"
                         phrase = ("most don't weight it in their LTIP" if cnt == 0
                                  else f"only {cnt} of {n_peers} peers also weight it")
                         body = f"A point of difference from peer practice — {phrase}."
@@ -403,8 +424,9 @@ with T["Overview"]:
             for metric, cnt in usage.sort_values(ascending=False).items():
                 share = cnt / n_peers
                 if share >= 0.5 and metric not in own_mix:
+                    _lbl = canonical_label(metric)
                     insights.append(
-                        (f"{canonical_label(metric)} is common among peers",
+                        (f"{_lbl} {_is_are(_lbl)} common among peers",
                          f"{cnt} of {n_peers} peers ({share:.0%}) include it in their LTIP "
                          f"— worth knowing for benchmarking conversations.", True))
     if not pd.isna(peer_med_n) and own_n > peer_med_n + 1:
@@ -478,7 +500,7 @@ with T["Long-Term Incentive"]:
         show = ltip_own.copy()
         for _, r in show.iterrows():
             wt = r.get("weight_percentage")
-            wt_s = f"{wt:.0f}%" if pd.notna(wt) else "—"
+            wt_s = _fmt_weight(wt)
             pending = str(r.get("targets_pending", "")).lower() in ("true", "1")
             thr, strc = r.get("threshold_value"), r.get("stretch_value")
             tgt = r.get("target_value")
@@ -636,12 +658,6 @@ with T["Long-Term Incentive"]:
 # ══════════════════════════════════════════════════════════════════════════════
 # ANNUAL BONUS
 # ══════════════════════════════════════════════════════════════════════════════
-def _fmt_weight(wt):
-    if pd.isna(wt):
-        return "—"
-    return f"{wt:.0f}%" if abs(wt - round(wt)) < 0.05 else f"{wt:.1f}%"
-
-
 def _names(display_names):
     return ", ".join(sorted(display_names, key=lambda n: (n != COMPANY, n)))
 

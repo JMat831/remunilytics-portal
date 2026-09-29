@@ -1168,7 +1168,14 @@ _STIP_POST_RULES = [
     # Regulated-utility environmental performance commitments (pollution,
     # storm overflows, the Environment Agency's EPA star rating, leakage)
     ("esg", [r"pollution", r"overflow", r"\bcsos?\b", r"sewer", r"\bepa\b",
-             r"environment agency", r"leakage", r"emission", r"carbon"]),
+             r"environment agency", r"leakage", r"emission", r"carbon",
+             r"per capita consumption"]),
+    # Ofwat's customer-service league tables (C-MeX domestic, BR-MeX business,
+    # D-MeX developer) -- the same kind of measure as a customer-satisfaction KPI
+    ("strategic", [r"\b(?:c|br|d)-?mex\b"]),
+    # A water company's whole-subsidiary scorecard ("South West Water (SWW)
+    # performance") -- one line standing for a bundle of undisclosed measures
+    ("scorecard", [r"\bwater\b[^,;]*\bperformance\b"]),
     ("ebit", [r"\bebita\b", r"\baop\b", r"adjusted operating profit"]),
     # insurers' Solvency II cash-generation measure (not an operational KPI)
     ("cashflow", [r"surplus generation"]),

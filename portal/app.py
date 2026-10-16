@@ -29,6 +29,8 @@ from data_layer import (
     apply_ltip_quantum_weighting, apply_plan_name_quantum_weighting, TIER_LABEL,
 )
 from source_render import has_box, render_citation
+from complexity import (parts_frame, moving_parts, COMPONENTS, CONTEXT,
+                        ltip_primary_measures, midrank_pctile)
 
 st.set_page_config(
     page_title="Remunilytics",
@@ -328,7 +330,26 @@ ltip_primary = ltip_own[ltip_own.get("is_sub_metric", pd.Series(False, index=lti
 
 pay_latest = latest_per_company(pay_all, "financial_year")
 
-TABS = ["Overview", "Long-Term Incentive", "Annual Bonus", "Policy"]
+def _pct_phrase(p, n, short=False):
+    """'above all 7 peers' reads better than '100th percentile'."""
+    if p == 100:
+        return f"above all {n} peers"
+    if p == 0:
+        return f"below all {n} peers"
+    return f"{ordinal(p)} pctile" if short else f"{ordinal(p)} percentile across {n} peers"
+
+
+# Design "moving parts" (portal/complexity.py) -- counted from the same views
+# the LTIP, Annual Bonus and Policy tabs display, so nothing can disagree.
+bonus_chart_all = stip_chart_rows(stip_view(stip_all, pol_latest))
+ltip_design = standing_ltip_view(ltip_all, pol_latest, ceo_only=False)
+mp_all = parts_frame(UNIVERSE, ltip_latest, bonus_chart_all, pol_latest, ltip_design)
+mp_own = moving_parts(COMPANY, ltip_latest, bonus_chart_all, pol_latest, ltip_design)
+mp_peers = mp_all[mp_all["company_name"] != COMPANY]
+mp_peer_totals = mp_peers["total"].dropna()
+mp_pct = midrank_pctile(mp_own["total"], mp_peer_totals.tolist())
+
+TABS = ["Overview", "Long-Term Incentive", "Annual Bonus", "Policy", "Simplicity"]
 if SHOW_PAY_BENCH:
     TABS.append("Single Figure")
 TABS.append("Sources")
@@ -341,13 +362,11 @@ T = dict(zip(TABS, tabs))
 with T["Overview"]:
     st.markdown("#### At a glance")
 
-    own_n = len(ltip_primary)
-    peer_counts = (
-        ltip_latest[(ltip_latest["company_name"] != COMPANY)]
-        .assign(_sub=lambda d: d.get("is_sub_metric", pd.Series(False, index=d.index)).fillna(False))
-        .query("_sub == False")
-        .groupby("company_name").size()
-    )
+    # Performance measures only -- a time-based restricted award's placeholder
+    # row is not a measure. Same definition as the Simplicity tab's count.
+    own_n = len(ltip_primary_measures(ltip_own))
+    peer_counts = (ltip_primary_measures(ltip_latest[ltip_latest["company_name"] != COMPANY])
+                   .groupby("company_name").size())
     peer_med_n = float(peer_counts.median()) if len(peer_counts) else float("nan")
 
     own_mix = set(ltip_primary["canonical_metric"].dropna()) if "canonical_metric" in ltip_primary.columns else set()
@@ -367,7 +386,7 @@ with T["Overview"]:
              f"{who}of salary · {ordinal(p)} pctile vs peers" if p is not None else f"{who}of salary")
 
     pol_own = pol_latest[pol_latest["company_name"] == COMPANY]
-    c1, c2, c3, c4, c5 = st.columns(5)
+    c1, c2, c3, c4, c5, c6 = st.columns(6)
     with c1:
         delta = "" if pd.isna(peer_med_n) else f"Peer median {peer_med_n:.0f}"
         card("LTIP metrics", f"{own_n}", delta,
@@ -381,6 +400,13 @@ with T["Overview"]:
     with c4:
         _opportunity_card("annual_bonus_max_percentage", "CEO STIP opportunity")
     with c5:
+        if mp_own["total"] is None:
+            card("Design moving parts", "n/a", "plan detail incomplete")
+        else:
+            card("Design moving parts", f"{mp_own['total']}",
+                 (f"Peer median {mp_peer_totals.median():.0f} · " + _pct_phrase(mp_pct, len(mp_peer_totals), short=True)
+                  if mp_pct is not None else "see Simplicity tab"))
+    with c6:
         prov = provenance_summary([ltip_own, stip_all[stip_all.company_name == COMPANY],
                                    pol_own, pay_latest[pay_latest.company_name == COMPANY]])
         exact = prov.get(3, 0)
@@ -882,6 +908,101 @@ with T["Policy"]:
                 f'<div style="margin-top:.45rem">{tier_pill(t)} &nbsp; {src_link(r.get("source_link"))}</div>'
                 f'</div>', unsafe_allow_html=True)
             source_view(r, "policy")
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SIMPLICITY -- design "moving parts" (portal/complexity.py)
+# ══════════════════════════════════════════════════════════════════════════════
+def _html_table(header, rows, bold_last=False):
+    th = "".join(f'<th style="text-align:{"left" if i == 0 else "right"};padding:.45rem .6rem;'
+                 f'border-bottom:2px solid #D5DCE6;color:#5A6478;font-weight:600">{h}</th>'
+                 for i, h in enumerate(header))
+    body = ""
+    for j, r in enumerate(rows):
+        bold = bold_last and j == len(rows) - 1
+        body += "<tr>" + "".join(
+            f'<td style="text-align:{"left" if i == 0 else "right"};padding:.4rem .6rem;'
+            f'border-bottom:1px solid #EEF1F5;{"font-weight:700;" if bold else ""}">{c}</td>'
+            for i, c in enumerate(r)) + "</tr>"
+    return (f'<table style="width:100%;border-collapse:collapse;font-size:.92rem;margin:.3rem 0 1rem">'
+            f'<thead><tr>{th}</tr></thead><tbody>{body}</tbody></table>')
+
+
+with T["Simplicity"]:
+    st.markdown("#### Design moving parts vs peers")
+    st.caption("How many separate parts the CEO's incentive design has, counted from what the annual "
+               "report discloses. A count, not a judgement: more parts can be a deliberate choice, for "
+               "example a hybrid plan during a turnaround. The UK Corporate Governance Code (Provision 40) "
+               "asks remuneration committees to address simplicity and clarity.")
+    tot = mp_own["total"]
+    if tot is None:
+        st.info("Not enough plan detail on file to count this company's design ("
+                + "; ".join(mp_own["notes"]) + ").")
+    else:
+        n_peer = len(mp_peer_totals)
+        if n_peer:
+            st.markdown(
+                f'<div class="rl-card" style="margin-bottom:.6rem"><h4>Design moving parts</h4>'
+                f'<span class="rl-big">{tot}</span><span class="rl-note" style="margin:0 0 0 .5rem">'
+                f'vs a peer median of {mp_peer_totals.median():.0f} · {_pct_phrase(mp_pct, n_peer)} '
+                f'(higher = more parts)</span></div>', unsafe_allow_html=True)
+            fig = go.Figure()
+            fig.add_box(x=mp_peer_totals.tolist(), name="Peers", marker_color=PEER,
+                        boxpoints="all", jitter=.5, pointpos=0, hoverinfo="x")
+            fig.add_scatter(x=[tot], y=["Peers"], mode="markers", name=COMPANY,
+                            marker=dict(color=ACCENT, size=15, line=dict(color="white", width=2)))
+            _span = max(mp_peer_totals.max(), tot) - min(mp_peer_totals.min(), tot)
+            fig.update_layout(height=150, showlegend=False, margin=dict(l=10, r=10, t=10, b=10),
+                              xaxis=dict(title="Moving parts", tickformat="d",
+                                         dtick=1 if _span <= 12 else None),
+                              plot_bgcolor="white", paper_bgcolor="white")
+            st.plotly_chart(fig, width="stretch")
+
+    # Component table: every count is a fact shown on another tab.
+    def _peer_stats(col):
+        v = pd.to_numeric(mp_peers[col], errors="coerce").dropna()
+        if v.empty:
+            return "—", "—"
+        return f"{v.median():.0f}", (f"{v.min():.0f}" if v.min() == v.max() else f"{v.min():.0f}–{v.max():.0f}")
+    rows = []
+    for key, label, tab in COMPONENTS:
+        med, rng = _peer_stats(key)
+        you = "n/a" if mp_own[key] is None else mp_own[key]
+        rows.append([f'{label}<br><span style="color:#8A94A6;font-size:.8rem">{tab} tab</span>', you, med, rng])
+    med, rng = _peer_stats("total")
+    rows.append(["Total moving parts", "n/a" if tot is None else tot, med, rng])
+    st.markdown(_html_table(["Component", COMPANY, "Peer median", "Peer range"], rows, bold_last=True),
+                unsafe_allow_html=True)
+
+    st.markdown("##### Release mechanics (shown for context, not counted)")
+    crow = []
+    for key, label, tab in CONTEXT:
+        pv = mp_peers[f"ctx_{key}"].dropna()
+        common = pv.mode().iloc[0] if len(pv) else "—"
+        crow.append([label, mp_own["context"].get(key) or "n/a", common])
+    st.markdown(_html_table(["", COMPANY, "Most common among peers"], crow), unsafe_allow_html=True)
+
+    with st.expander(f"What we counted for {COMPANY}"):
+        for key, label, _ in COMPONENTS:
+            items = [i for i in mp_own["items"].get(key, []) if i]
+            st.markdown(f"**{label}: {'n/a' if mp_own[key] is None else mp_own[key]}**"
+                        + ("".join(f"<br>· {i}" for i in items) if items else ""), unsafe_allow_html=True)
+
+    notes = ["Counts come from the same disclosures as the other tabs: LTIP vehicles and measures from the "
+             "plans the company currently runs (a time-based restricted award has no performance measure); "
+             "bonus measures from the most recent year with disclosed weightings, a combined-weighting "
+             "category counted through its members; one condition per LTIP vehicle with an underpin, "
+             "gateway, modifier or kicker, plus one if the bonus has any (general Committee discretion is "
+             "not counted)."]
+    if mp_own["notes"] and tot is not None:
+        notes.append(f"{COMPANY}: " + "; ".join(mp_own["notes"]) + ".")
+    incomplete = mp_peers[mp_peers["total"].isna()]["company_name"].map(alias).dropna().tolist()
+    if incomplete:
+        notes.append(f"{_names(incomplete)}: plan detail incomplete, left out of the peer comparison.")
+    no_ltip = (mp_peers[mp_peers["notes"].str.contains("no LTIP on file", na=False)]["company_name"]
+               .map(alias).dropna().tolist())
+    if no_ltip:
+        notes.append(f"{_names(no_ltip)}: no LTIP on file, so only the bonus is counted.")
+    st.caption(" ".join(notes))
 
 # ══════════════════════════════════════════════════════════════════════════════
 # SINGLE FIGURE (opt-in per recipient)

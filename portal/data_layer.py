@@ -294,7 +294,10 @@ def latest_per_company(df: pd.DataFrame, year_col: str) -> pd.DataFrame:
 
 
 _DEFERRED_BONUS_RE = re.compile(
-    r"deferred annual bonus|\bdabp\b|deferred bonus plan", re.IGNORECASE
+    # "annual award pool": ICG's Equity Award is sized by a one-year scorecard
+    # (the AAP) and then deferred into shares -- a deferred annual award, as its
+    # 2026 re-extraction concluded; its 2025 extraction had mislabelled it an LTIP.
+    r"deferred annual bonus|\bdabp\b|deferred bonus plan|annual award pool", re.IGNORECASE
 )
 
 
@@ -665,8 +668,13 @@ def prefer_latest_ar_vintage(df: pd.DataFrame, year_col: str = "grant_year") -> 
     return df[df["file_name"] == latest_file]
 
 
-def standing_ltip_view(ltip_df: pd.DataFrame, pol_latest: pd.DataFrame) -> pd.DataFrame:
+def standing_ltip_view(ltip_df: pd.DataFrame, pol_latest: pd.DataFrame,
+                       ceo_only: bool = True) -> pd.DataFrame:
     """The filter chain that turns raw LTIP rows into a company's STANDING design.
+
+    ceo_only=False keeps awards made only to other executives -- the company's
+    plan DESIGN when the CEO has no current award (Trainline: departing CEO, so
+    the FY2027 PSP went to the CFO only). The portal's tabs use the default.
 
     Defined once, here, because it has now drifted twice: first when
     `check_multiplan_policy_coverage` reimplemented it and flagged seven
@@ -675,10 +683,15 @@ def standing_ltip_view(ltip_df: pd.DataFrame, pol_latest: pd.DataFrame) -> pd.Da
     At Home. Anything that wants "the plans a company actually runs" should call
     this rather than assembling its own sequence.
     """
-    out = latest_per_company(ltip_df, "grant_year")
-    out = exclude_deferred_bonus_plans(out)          # a deferred bonus is STIP
+    # Rows that are never the standing design come out BEFORE the latest grant
+    # year is chosen: a one-off buy-out granted after the main plan (Zigup's
+    # 2026 buy-out) otherwise became the "latest year", was then removed, and
+    # took the company's real plan (its VCP) down with it.
+    out = exclude_deferred_bonus_plans(ltip_df)      # a deferred bonus is STIP
     out = exclude_buyout_replacement_awards(out)     # buy-outs / catch-up awards
-    out = exclude_other_executive_only_awards(out, pol_latest)   # not the CEO's
+    out = latest_per_company(out, "grant_year")
+    if ceo_only:
+        out = exclude_other_executive_only_awards(out, pol_latest)   # not the CEO's
     out = prefer_forward_looking_grant(out)          # same design disclosed twice
     out = prefer_replacement_plan(out)               # superseded vehicle, by name
     out = exclude_non_standing_plans(out)            # ...and by stated relationship

@@ -1,0 +1,37 @@
+# Keeps the Streamlit Community Cloud app awake so outreach links never land on
+# the "this app has gone to sleep" page. Copied into the deploy repo as
+# .github/workflows/keepalive.yml by portal/build_deploy_repo.py.
+# Note: GitHub pauses scheduled workflows in a repo with no commits for 60 days.
+name: Keep portal awake
+
+on:
+  schedule:
+    - cron: "17 */4 * * *"   # every 4 hours, at :17
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  visit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: portal/deploy
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install a headless browser
+        run: |
+          pip install playwright==1.52.0
+          python -m playwright install --with-deps chromium
+      - name: Visit the app (wakes it if asleep)
+        run: python portal/deploy/keepalive.py
+      - name: Keep a screenshot if it failed
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: keepalive-failure
+          path: keepalive_failure.png
